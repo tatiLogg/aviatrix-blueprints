@@ -260,13 +260,13 @@ resource "aws_instance" "test_vms" {
   subnet_id              = aws_subnet.spokes_private[each.key].id
   vpc_security_group_ids = [aws_security_group.test_vms[each.key].id]
 
-  user_data = <<-EOF
-              #!/bin/bash
-              yum update -y
-              yum install -y tcpdump netcat nmap
-              hostnamectl set-hostname ${each.key}-test-vm
-              echo "Welcome to ${each.key} test VM" > /etc/motd
-              EOF
+  # Pin private IP so Gatus configs can reference it at plan time.
+  # IP is the 10th host in the private /26 subnet for each spoke.
+  private_ip = local.test_vm_ips[each.key]
+
+  # Dev and Prod VMs run Gatus for live connectivity dashboards.
+  # DB VM runs basic tooling only.
+  user_data = lookup(local.gatus_user_data, each.key, local.gatus_user_data["db"])
 
   tags = merge(local.common_tags, {
     Name        = "${var.name_prefix}-${each.key}-test-vm"

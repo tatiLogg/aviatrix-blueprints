@@ -79,6 +79,22 @@ output "test_scenarios" {
   }
 }
 
+output "gatus_dashboards" {
+  description = "SSH tunnel commands and URLs for the live Gatus connectivity dashboards"
+  value = {
+    dev = {
+      tunnel  = "aws ec2-instance-connect ssh --region ${var.aws_region} --instance-id ${aws_instance.test_vms["dev"].id} -- -L 18080:localhost:8080 -N"
+      browser = "http://localhost:18080"
+      shows   = "Dev→DB: BLOCKED | Dev→Prod ICMP: ALLOWED | Dev→Prod TCP: BLOCKED"
+    }
+    prod = {
+      tunnel  = "aws ec2-instance-connect ssh --region ${var.aws_region} --instance-id ${aws_instance.test_vms["prod"].id} -- -L 28080:localhost:8080 -N"
+      browser = "http://localhost:28080"
+      shows   = "Prod→DB: ALLOWED | Prod→Dev: BLOCKED"
+    }
+  }
+}
+
 output "copilot_verification_steps" {
   description = "Steps to verify deployment in CoPilot"
   value = [
