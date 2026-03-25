@@ -86,19 +86,50 @@ cd aviatrix-blueprints/blueprints/zero-trust-segmentation
 
 ### Step 2: Configure Environment Variables
 
+**Aviatrix credentials** — always set these as environment variables:
+
 ```bash
-# Set Aviatrix Controller credentials
 export AVIATRIX_CONTROLLER_IP="<your-controller-ip>"
 export AVIATRIX_USERNAME="admin"
 export AVIATRIX_PASSWORD="<your-password>"
-
-# Set AWS credentials (if not using AWS CLI profile)
-export AWS_ACCESS_KEY_ID="<your-access-key>"
-export AWS_SECRET_ACCESS_KEY="<your-secret-key>"
-export AWS_REGION="us-east-1"
 ```
 
-### Step 3: Configure Variables
+**AWS credentials** — use one of the following options:
+
+```bash
+# Option A: Environment variables (access key / secret key)
+export AWS_ACCESS_KEY_ID="<your-access-key>"
+export AWS_SECRET_ACCESS_KEY="<your-secret-key>"
+export AWS_DEFAULT_REGION="us-east-1"
+
+# Option B: AWS CLI profile (if already configured via `aws configure` or SSO)
+export AWS_PROFILE="<your-profile-name>"
+```
+
+> If you're unsure which to use, run `aws sts get-caller-identity` — if it returns your account ID, your AWS credentials are already active and you can skip Option A/B.
+
+### Step 3: Pre-Deployment Checklist
+
+Before applying, verify these prerequisites are in place:
+
+```bash
+# 1. Confirm AWS credentials are active
+aws sts get-caller-identity
+
+# 2. Confirm your EC2 key pair exists in the target region
+aws ec2 describe-key-pairs --region us-east-1 --query 'KeyPairs[].KeyName'
+# If the key pair you plan to use is not listed, create one:
+# aws ec2 create-key-pair --key-name my-keypair --region us-east-1 --query 'KeyMaterial' --output text > my-keypair.pem
+
+# 3. Confirm sufficient Elastic IP quota (need 4 free EIPs)
+aws ec2 describe-account-attributes --attribute-names max-elastic-ips --query 'AccountAttributes[0].AttributeValues[0].AttributeValue'
+aws ec2 describe-addresses --query 'Addresses | length(@)'
+# Available EIPs = quota - current count. Must be >= 4.
+```
+
+Also confirm in the Aviatrix Controller that your AWS account is onboarded under **Accounts > Access Accounts** before proceeding. Gateway creation will time out if the account is not onboarded.
+
+### Step 4: Configure Variables
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars
@@ -107,14 +138,14 @@ cp terraform.tfvars.example terraform.tfvars
 Edit `terraform.tfvars` with your values:
 
 ```hcl
-aws_account_name      = "my-aws-account"  # As configured in Aviatrix Controller
+aws_account_name      = "my-aws-account"  # As configured in Aviatrix Controller > Accounts
 aws_region            = "us-east-1"
 name_prefix           = "zt-seg"
-test_vm_key_name      = "my-keypair"      # Must exist in your AWS account
+test_vm_key_name      = "my-keypair"      # Must match a key pair name from Step 3 above
 test_vm_instance_type = "t3.micro"
 ```
 
-### Step 4: Deploy
+### Step 5: Deploy
 
 ```bash
 terraform init
@@ -126,20 +157,34 @@ Type `yes` when prompted to confirm.
 
 **Deployment takes approximately 10-15 minutes.**
 
-### Step 5: Verify Deployment
+### Step 6: Verify Deployment
 
-After deployment completes:
+After deployment completes, run:
 
 ```bash
-# View outputs
-terraform output
-
-# You should see:
-# - Transit and spoke gateway names
-# - Test VM private IPs
-# - SmartGroup UUIDs
-# - Test scenarios to run
+terraform output test_vm_private_ips
+terraform output test_vm_ids
 ```
+
+Expected output:
+
+```
+test_vm_private_ips = {
+  "db"   = "10.3.0.x"
+  "dev"  = "10.1.0.x"
+  "prod" = "10.2.0.x"
+}
+
+test_vm_ids = {
+  "db"   = "i-0xxxxxxxxxxxxxxxxx"
+  "dev"  = "i-0xxxxxxxxxxxxxxxxx"
+  "prod" = "i-0xxxxxxxxxxxxxxxxx"
+}
+```
+
+Save these IPs and instance IDs — you'll need them for the test scenarios below.
+
+> **Wait 2 minutes** after deployment before running tests. SmartGroups need time to discover and register the newly created EC2 instances. Running tests immediately may produce inconsistent results.
 
 ## Variables
 
@@ -193,6 +238,22 @@ terraform output
 
 ## Test Scenarios
 
+### Accessing CoPilot
+
+CoPilot is accessed through the Controller — no separate login required. Once logged into the Controller, click the **CoPilot** link in the top navigation bar. This opens CoPilot in a new tab with your session carried over automatically.
+
+### Connecting to Test VMs
+
+Use AWS EC2 Instance Connect to SSH into each VM directly from the terminal (no bastion or key file needed):
+
+```bash
+# Get instance IDs (if you didn't save them from Step 6)
+terraform output test_vm_ids
+
+# SSH to any VM using EC2 Instance Connect
+aws ec2-instance-connect ssh --region us-east-1 --instance-id <instance-id>
+```
+
 ### Manual Testing
 
 #### Scenario 1: Dev Attempting to Access DB (SHOULD BE BLOCKED)
@@ -201,17 +262,14 @@ This tests the most critical security control - preventing development environme
 
 **Steps:**
 ```bash
-# Get the test VM IPs
-terraform output test_vm_private_ips
+# 1. SSH to Dev VM
+aws ec2-instance-connect ssh --region us-east-1 --instance-id <dev-instance-id>
 
-# SSH to Dev VM (use AWS Session Manager or SSH via bastion)
-aws ssm start-session --target <dev-vm-instance-id>
-
-# Try to ping DB VM
+# 2. Try to ping DB VM (use IP from terraform output test_vm_private_ips)
 ping <db-vm-private-ip>
 ```
 
-**Expected Result:** ❌ Ping fails - **Zero Trust Network Segmentation prevents dev from accessing production database**
+**Expected Result:** ❌ Ping times out — **Zero Trust Network Segmentation prevents dev from accessing the production database**
 
 **What You'd See in CoPilot:**
 - **Navigation:** Security → Distributed Cloud Firewall → Monitor
@@ -231,14 +289,14 @@ This validates that legitimate production-to-database traffic is permitted.
 
 **Steps:**
 ```bash
-# SSH to Prod VM
-aws ssm start-session --target <prod-vm-instance-id>
+# 1. SSH to Prod VM
+aws ec2-instance-connect ssh --region us-east-1 --instance-id <prod-instance-id>
 
-# Ping DB VM
+# 2. Ping DB VM
 ping <db-vm-private-ip>
 ```
 
-**Expected Result:** ✅ Ping succeeds - **Zero Trust explicit allow for legitimate business traffic**
+**Expected Result:** ✅ Ping succeeds — **Zero Trust explicit allow for legitimate business traffic**
 
 **What You'd See in CoPilot:**
 - **Navigation:** Security → Distributed Cloud Firewall → Monitor
@@ -257,19 +315,19 @@ This demonstrates fine-grained control - allowing diagnostics while blocking oth
 
 **Steps:**
 ```bash
-# SSH to Dev VM
-aws ssm start-session --target <dev-vm-instance-id>
+# 1. SSH to Dev VM
+aws ec2-instance-connect ssh --region us-east-1 --instance-id <dev-instance-id>
 
-# Ping Prod VM (ICMP should work)
+# 2. Ping Prod VM — ICMP should succeed
 ping <prod-vm-private-ip>
 
-# Try TCP connection (should fail)
-nc -zv <prod-vm-private-ip> 80
+# 3. Try TCP connection — should fail (wait up to 10 seconds for timeout)
+nc -zv -w 5 <prod-vm-private-ip> 80
 ```
 
 **Expected Result:**
-- ✅ Ping succeeds (ICMP allowed)
-- ❌ TCP connection fails (only ICMP allowed)
+- ✅ Ping succeeds (ICMP allowed by policy)
+- ❌ TCP connection times out after ~5 seconds (only ICMP is permitted — connection refused means the port is closed, timeout means DCF blocked it)
 
 ---
 
@@ -279,14 +337,14 @@ This enforces production isolation from less secure development environments.
 
 **Steps:**
 ```bash
-# SSH to Prod VM
-aws ssm start-session --target <prod-vm-instance-id>
+# 1. SSH to Prod VM
+aws ec2-instance-connect ssh --region us-east-1 --instance-id <prod-instance-id>
 
-# Try to ping Dev VM
+# 2. Try to ping Dev VM
 ping <dev-vm-private-ip>
 ```
 
-**Expected Result:** ❌ Ping fails - traffic is blocked by DCF policy "deny-prod-to-dev"
+**Expected Result:** ❌ Ping times out — traffic blocked by DCF policy "deny-prod-to-dev"
 
 ---
 
@@ -488,9 +546,9 @@ This blueprint is currently tested with:
 | Component | Version |
 |-----------|---------|
 | Aviatrix Controller | 7.2.x |
-| Aviatrix Terraform Provider | 3.1.5 |
+| Aviatrix Terraform Provider | 3.1.x |
 | Terraform | 1.9.x |
-| AWS Provider | 5.80.x |
+| AWS Provider | 6.32.x |
 
 > **Note**: The blueprint may work with other versions, but these are the versions used for validation.
 
@@ -588,5 +646,5 @@ terraform apply
 
 **Author:** @tatiLogg
 **Status:** ✅ Community Tier - Tested and validated
-**Last Updated:** February 2026
+**Last Updated:** March 2026
 **Blueprint Tier:** Community (targeting Verified Q2 2026)
