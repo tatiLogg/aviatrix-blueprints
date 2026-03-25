@@ -49,31 +49,31 @@ output "test_scenarios" {
   description = "Test scenarios to validate segmentation"
   value = {
     scenario_1 = {
-      name        = "Dev trying to access DB (SHOULD BE BLOCKED)"
-      source      = "dev-test-vm (${aws_instance.test_vms["dev"].private_ip})"
-      destination = "db-test-vm (${aws_instance.test_vms["db"].private_ip})"
-      expected    = "FAIL - Connection should be denied by DCF"
+      name         = "Dev trying to access DB (SHOULD BE BLOCKED)"
+      source       = "dev-test-vm (${aws_instance.test_vms["dev"].private_ip})"
+      destination  = "db-test-vm (${aws_instance.test_vms["db"].private_ip})"
+      expected     = "FAIL - Connection should be denied by DCF"
       test_command = "ping ${aws_instance.test_vms["db"].private_ip}"
     }
     scenario_2 = {
-      name        = "Prod accessing DB (SHOULD BE ALLOWED)"
-      source      = "prod-test-vm (${aws_instance.test_vms["prod"].private_ip})"
-      destination = "db-test-vm (${aws_instance.test_vms["db"].private_ip})"
-      expected    = "SUCCESS - Connection should be permitted"
+      name         = "Prod accessing DB (SHOULD BE ALLOWED)"
+      source       = "prod-test-vm (${aws_instance.test_vms["prod"].private_ip})"
+      destination  = "db-test-vm (${aws_instance.test_vms["db"].private_ip})"
+      expected     = "SUCCESS - Connection should be permitted"
       test_command = "ping ${aws_instance.test_vms["db"].private_ip}"
     }
     scenario_3 = {
-      name        = "Dev accessing Prod (SHOULD BE ALLOWED - ICMP only)"
-      source      = "dev-test-vm (${aws_instance.test_vms["dev"].private_ip})"
-      destination = "prod-test-vm (${aws_instance.test_vms["prod"].private_ip})"
-      expected    = "SUCCESS - Ping should work"
+      name         = "Dev accessing Prod (SHOULD BE ALLOWED - ICMP only)"
+      source       = "dev-test-vm (${aws_instance.test_vms["dev"].private_ip})"
+      destination  = "prod-test-vm (${aws_instance.test_vms["prod"].private_ip})"
+      expected     = "SUCCESS - Ping should work"
       test_command = "ping ${aws_instance.test_vms["prod"].private_ip}"
     }
     scenario_4 = {
-      name        = "Prod trying to access Dev (SHOULD BE BLOCKED)"
-      source      = "prod-test-vm (${aws_instance.test_vms["prod"].private_ip})"
-      destination = "dev-test-vm (${aws_instance.test_vms["dev"].private_ip})"
-      expected    = "FAIL - Connection should be denied by DCF"
+      name         = "Prod trying to access Dev (SHOULD BE BLOCKED)"
+      source       = "prod-test-vm (${aws_instance.test_vms["prod"].private_ip})"
+      destination  = "dev-test-vm (${aws_instance.test_vms["dev"].private_ip})"
+      expected     = "FAIL - Connection should be denied by DCF"
       test_command = "ping ${aws_instance.test_vms["dev"].private_ip}"
     }
   }

@@ -86,17 +86,17 @@ resource "aviatrix_transit_gateway" "main" {
   ha_subnet    = var.transit_gateway.ha_enabled ? cidrsubnet(var.transit_gateway.cidr, 2, 1) : null
   ha_gw_size   = var.transit_gateway.ha_enabled ? "t3.small" : null
 
-  local_as_number                      = var.transit_gateway.asn
-  enable_segmentation                  = true
-  enable_transit_firenet               = false
-  connected_transit                    = true
-  enable_advertise_transit_cidr        = true
-  enable_active_standby                = false
-  enable_gateway_load_balancer         = false
-  enable_vpc_dns_server                = false
-  enable_encrypt_volume                = true
-  enable_preserve_as_path              = false
-  enable_bgp_over_lan                  = false
+  local_as_number               = var.transit_gateway.asn
+  enable_segmentation           = true
+  enable_transit_firenet        = false
+  connected_transit             = true
+  enable_advertise_transit_cidr = true
+  enable_active_standby         = false
+  enable_gateway_load_balancer  = false
+  enable_vpc_dns_server         = false
+  enable_encrypt_volume         = true
+  enable_preserve_as_path       = false
+  enable_bgp_over_lan           = false
 
   tags = local.common_tags
 }
