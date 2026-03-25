@@ -580,7 +580,7 @@ This blueprint is currently tested with:
 | Component | Version |
 |-----------|---------|
 | Aviatrix Controller | 7.2.x |
-| Aviatrix Terraform Provider | 3.1.x |
+| Aviatrix Terraform Provider | 8.2.x |
 | Terraform | 1.9.x |
 | AWS Provider | 6.32.x |
 
