@@ -41,3 +41,13 @@ Thumbs.db
 *.key
 credentials.json
 service-account*.json
+
+# Local working documents (not part of the blueprint)
+CLAUDE.md.original
+CONFLUENCE-DEMO-PAGE-STREAMLINED.md
+PR-DESCRIPTION.md
+set-credentials.sh
+blueprints/prevent-lateral-movement-vm-tags/CONFLUENCE-DEMO-PAGE-FINAL.md
+blueprints/prevent-lateral-movement-vm-tags/COPILOT-SUPPORT-REQUEST.md
+blueprints/prevent-lateral-movement-vm-tags/CPO-DEMO-BRIEF.md
+blueprints/prevent-lateral-movement-vm-tags/CPO-DEMO-BRIEF-PLAIN.txt

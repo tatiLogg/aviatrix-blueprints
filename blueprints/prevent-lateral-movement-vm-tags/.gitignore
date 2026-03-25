@@ -32,6 +32,13 @@ terraform.rc
 /tmp/
 *.tmp
 
+# Credentials and local scripts
+set-credentials.sh
+
+# Terraform plan files
+tfplan
+*.tfplan
+
 # macOS
 .DS_Store
 
