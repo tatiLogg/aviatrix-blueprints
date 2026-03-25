@@ -70,6 +70,7 @@ This blueprint deploys:
 | **Elastic IPs** | Public IPs for gateways | 4 | $0.02 |
 | **DCF SmartGroups** | Dynamic network segments | 3 | Free |
 | **DCF Policies** | Zero Trust firewall rules | 5 | Free |
+| **Gatus (Docker)** | Live connectivity dashboards on Dev and Prod VMs | 2 | Free |
 
 **Total Estimated Cost**: ~$0.25/hour (~$6/day or ~$180/month)
 
@@ -184,7 +185,38 @@ test_vm_ids = {
 
 Save these IPs and instance IDs — you'll need them for the test scenarios below.
 
-> **Wait 2 minutes** after deployment before running tests. SmartGroups need time to discover and register the newly created EC2 instances. Running tests immediately may produce inconsistent results.
+### Step 7: Open the Gatus Live Dashboards
+
+> **Wait 5 minutes** after deployment before opening the dashboards. The Dev and Prod VMs need time to finish installing Docker and starting Gatus via `user_data`. SmartGroups also need this time to register the instances.
+
+Gatus runs automatically on the Dev and Prod VMs — no configuration needed. It monitors cross-environment connectivity every 10 seconds and shows a live RED/GREEN status dashboard for each DCF policy.
+
+**Get your tunnel commands:**
+
+```bash
+terraform output gatus_dashboards
+```
+
+**Open two terminals and run one command in each:**
+
+```bash
+# Terminal 1 — Dev dashboard (shows dev's Zero Trust view)
+aws ec2-instance-connect ssh --region us-east-1 --instance-id <dev-instance-id> -- -L 18080:localhost:8080 -N
+
+# Terminal 2 — Prod dashboard (shows prod's Zero Trust view)
+aws ec2-instance-connect ssh --region us-east-1 --instance-id <prod-instance-id> -- -L 28080:localhost:8080 -N
+```
+
+> The `-N` flag keeps the tunnel open without opening a shell. Leave both terminals running while you use the dashboards. The exact commands with your instance IDs are in `terraform output gatus_dashboards`.
+
+**Open both in your browser:**
+
+| Dashboard | URL | What it shows |
+|-----------|-----|---------------|
+| **Dev** | http://localhost:18080 | Dev→DB: 🔴 BLOCKED / Dev→Prod ICMP: 🟢 ALLOWED / Dev→Prod TCP: 🔴 BLOCKED |
+| **Prod** | http://localhost:28080 | Prod→DB: 🟢 ALLOWED / Prod→Dev: 🔴 BLOCKED |
+
+**Demo tip:** Open both tabs side by side before your presentation starts. The dashboards update every 10 seconds automatically — no commands needed during the demo. This lets you walk through the Zero Trust story while the audience watches live policy enforcement in real time.
 
 ## Variables
 
@@ -232,7 +264,9 @@ Save these IPs and instance IDs — you'll need them for the test scenarios belo
 | `transit_gateway_name` | Name of the Aviatrix Transit Gateway |
 | `spoke_gateways` | Map of spoke gateway names |
 | `test_vm_private_ips` | Private IP addresses of test VMs |
+| `test_vm_ids` | Instance IDs of test VMs |
 | `smartgroup_uuids` | UUIDs of created SmartGroups |
+| `gatus_dashboards` | SSH tunnel commands and URLs for Gatus dashboards |
 | `test_scenarios` | Detailed test scenarios with expected results |
 | `copilot_verification_steps` | Steps to verify deployment in CoPilot |
 
