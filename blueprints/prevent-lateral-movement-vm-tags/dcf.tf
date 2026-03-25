@@ -60,7 +60,7 @@ resource "aviatrix_smart_group" "db" {
 }
 
 # ============================================================================
-# DCF Policies - Zero Trust Segmentation Rules
+# DCF Policies - Prevent Lateral Movement - VM Tags Rules
 # ============================================================================
 
 resource "aviatrix_distributed_firewalling_policy_list" "main" {

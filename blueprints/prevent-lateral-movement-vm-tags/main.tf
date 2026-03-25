@@ -1,6 +1,6 @@
 locals {
   common_tags = {
-    Blueprint   = "zero-trust-segmentation"
+    Blueprint   = "prevent-lateral-movement-vm-tags"
     ManagedBy   = "Terraform"
     Environment = "Demo"
     Owner       = var.name_prefix
@@ -204,6 +204,28 @@ resource "aviatrix_spoke_gateway" "spokes" {
 }
 
 # ============================================================================
+# EC2 Instance Connect Endpoints (EICE)
+# ============================================================================
+# One endpoint per spoke VPC — allows SEs to SSH tunnel to private test VMs
+# using only their existing AWS credentials. No public IPs, no key management,
+# no IP whitelisting required. The `aws ec2-instance-connect ssh` command in
+# the gatus_dashboards output auto-discovers these endpoints.
+#
+# Only dev and prod need endpoints (Gatus runs there). DB is a target-only VM.
+
+resource "aws_ec2_instance_connect_endpoint" "spokes" {
+  for_each = { for k, v in var.spokes : k => v if k != "db" }
+
+  subnet_id          = aws_subnet.spokes_public[each.key].id
+  preserve_client_ip = false
+
+  tags = merge(local.common_tags, {
+    Name        = "${var.name_prefix}-${each.key}-eice"
+    Environment = each.value.environment
+  })
+}
+
+# ============================================================================
 # Test VMs (one per spoke)
 # ============================================================================
 
@@ -264,9 +286,13 @@ resource "aws_instance" "test_vms" {
   # IP is the 10th host in the private /26 subnet for each spoke.
   private_ip = local.test_vm_ips[each.key]
 
-  # Dev and Prod VMs run Gatus for live connectivity dashboards.
-  # DB VM runs basic tooling only.
-  user_data = lookup(local.gatus_user_data, each.key, local.gatus_user_data["db"])
+  user_data = <<-SCRIPT
+    #!/bin/bash
+    yum update -y
+    yum install -y tcpdump netcat nmap
+    hostnamectl set-hostname ${each.key}-test-vm
+    echo "Welcome to ${each.key} test VM" > /etc/motd
+    SCRIPT
 
   tags = merge(local.common_tags, {
     Name        = "${var.name_prefix}-${each.key}-test-vm"

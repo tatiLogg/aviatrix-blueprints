@@ -61,3 +61,9 @@ variable "test_vm_key_name" {
   description = "EC2 key pair name for SSH access to test VMs"
   type        = string
 }
+
+variable "gatus_allowed_cidr" {
+  description = "CIDR allowed to reach the Gatus dashboard ALB on port 80. Defaults to open; restrict to your IP for demos (e.g. \"1.2.3.4/32\")."
+  type        = string
+  default     = "0.0.0.0/0"
+}

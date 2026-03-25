@@ -1,10 +1,10 @@
-# Claude Code Configuration
+Claude Code Configuration
 
 This directory contains configuration and skills for [Claude Code](https://claude.ai/code) to work effectively with the Aviatrix Blueprints repository.
 
-## Contents
+Contents
 
-```
+
 .claude/
 ├── README.md                   # This file
 ├── settings.json               # Project-level Claude Code settings
@@ -16,22 +16,22 @@ This directory contains configuration and skills for [Claude Code](https://claud
     └── test-blueprint.md
 ```
 
-## MCP Server Setup
+MCP Server Setup
 
 For the best experience developing blueprints, configure these MCP servers in your **global** Claude Code settings (`~/.claude.json` or via Claude Code settings):
 
 | Server | Purpose |
 |--------|---------|
-| **GitHub** | Access to Aviatrix provider documentation and repository management |
-| **Terraform** | Registry lookups for provider/module versions |
-| **Playwright** | Browser automation for testing against the Aviatrix Control Plane |
-| **Serena** | LSP-based code intelligence for Terraform |
+| GitHub | Access to Aviatrix provider documentation and repository management |
+| Terraform | Registry lookups for provider/module versions |
+| Playwright | Browser automation for testing against the Aviatrix Control Plane |
+| Serena | LSP-based code intelligence for Terraform |
 
 Copy the configuration from `mcp-servers.example.json` to your global settings.
 
-## Skills
+Skills
 
-### /analyze-blueprint
+/analyze-blueprint
 
 Analyzes a blueprint and generates:
 - Complete resource inventory
@@ -39,7 +39,7 @@ Analyzes a blueprint and generates:
 - Cost estimates
 - Required permissions
 
-### /validate-blueprint
+/validate-blueprint
 
 Validates a blueprint against repository standards:
 - Terraform fmt/validate
@@ -47,7 +47,7 @@ Validates a blueprint against repository standards:
 - Naming conventions
 - Security checks
 
-### /deploy-blueprint
+/deploy-blueprint
 
 Deploys a blueprint with guided, multi-step orchestration:
 - Interactive blueprint selection
@@ -60,7 +60,7 @@ Deploys a blueprint with guided, multi-step orchestration:
 
 Supports both simple single-layer and complex multi-layer blueprints (like dcf-eks with network → clusters → nodes).
 
-### /test-blueprint
+/test-blueprint
 
 Deploys and tests a blueprint end-to-end:
 - Pre-flight checks
@@ -69,7 +69,7 @@ Deploys and tests a blueprint end-to-end:
 - Test scenario execution
 - Cleanup and orphan check
 
-## Usage
+Usage
 
 1. Install [Claude Code](https://claude.ai/code)
 2. Configure MCP servers in your global settings (see `mcp-servers.example.json`)
@@ -81,22 +81,22 @@ Deploys and tests a blueprint end-to-end:
    - `/deploy-blueprint` - Deploy a blueprint to your environment
    - `/test-blueprint` - Full end-to-end testing with cleanup
 
-## Customization
+Customization
 
 To add custom skills:
 1. Create a new `.md` file in the `skills/` directory
 2. Follow the format of existing skills
 3. Claude Code will automatically recognize the new skill
 
-## Environment Variables
+Environment Variables
 
 Some MCP servers require environment variables:
 
 ```bash
-# GitHub MCP
+GitHub MCP
 export GITHUB_TOKEN="your-github-token"
 
-# For testing (optional)
+For testing (optional)
 export AVIATRIX_CONTROLLER_IP="10.0.0.1"
 export AVIATRIX_USERNAME="admin"
 export AVIATRIX_PASSWORD="your-password"

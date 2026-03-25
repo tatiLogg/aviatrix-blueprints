@@ -1,6 +1,6 @@
-# Zero Trust Network Segmentation with Aviatrix DCF
+# Prevent Lateral Movement - VM Tags with Aviatrix DCF
 
-Deploy **Zero Trust Network Segmentation** in 15 minutes using Aviatrix Distributed Cloud Firewall (DCF) with SmartGroups. This blueprint achieves microsegmentation across AWS VPCs—**preventing lateral movement, accelerating compliance, and eliminating security group sprawl**—with tag-based automation that scales.
+Deploy **Prevent Lateral Movement - VM Tags** in 15 minutes using Aviatrix Distributed Cloud Firewall (DCF) with SmartGroups. This blueprint achieves microsegmentation across AWS VPCs—**preventing lateral movement, accelerating compliance, and eliminating security group sprawl**—with tag-based automation that scales.
 
 ## Customer Outcomes
 
@@ -11,7 +11,7 @@ Deploy **Zero Trust Network Segmentation** in 15 minutes using Aviatrix Distribu
 ✅ **Multi-cloud consistency** - Same Zero Trust policies across AWS, Azure, GCP
 
 > [!TIP]
-> **🤖 Optimized for Claude Code** — Run `/deploy-blueprint zero-trust-segmentation` for AI-guided deployment with prerequisite checks, or `/analyze-blueprint zero-trust-segmentation` for resource and cost details. [Get Claude Code](https://claude.ai/code)
+> **🤖 Optimized for Claude Code** — Run `/deploy-blueprint prevent-lateral-movement-vm-tags` for AI-guided deployment with prerequisite checks, or `/analyze-blueprint prevent-lateral-movement-vm-tags` for resource and cost details. [Get Claude Code](https://claude.ai/code)
 
 ---
 
@@ -26,15 +26,16 @@ This blueprint deploys:
 - **3 EC2 Test Instances** - One per environment for connectivity validation
 - **3 DCF SmartGroups** - Dynamic groups based on environment tags
 - **5 DCF Policies** - Zero Trust rules enforcing segmentation
+- **1 Gatus monitoring instance + ALB** - Live Zero Trust dashboard, browser-accessible with no SSH required
 
-**Zero Trust Segmentation Policies:**
+**Prevent Lateral Movement - VM Tags Policies:**
 - ✅ **Prod → DB**: PERMIT (legitimate business need - explicit allow)
 - ✅ **Dev → Prod**: PERMIT ICMP only (monitoring access - protocol-level granularity)
 - ❌ **Dev → DB**: **DENY** (blocks lateral movement from dev to production data)
 - ❌ **Prod → Dev**: **DENY** (prevents compromised production from affecting dev)
 - ❌ **Default**: **DENY ALL** (Zero Trust default-deny - no implicit trust)
 
-**Zero Trust Benefit:** Even if an attacker compromises the dev environment, Zero Trust Network Segmentation prevents access to production databases—containing the breach and stopping ransomware lateral movement.
+**Zero Trust Benefit:** Even if an attacker compromises the dev environment, Prevent Lateral Movement - VM Tags prevents access to production databases—containing the breach and stopping ransomware lateral movement.
 
 ## Prerequisites
 
@@ -62,17 +63,21 @@ This blueprint deploys:
 | **Aviatrix Transit Gateway** | Central hub gateway (t3.small) | 1 | $0.05 |
 | **Aviatrix Spoke Gateways** | Spoke gateways for each environment (t3.small) | 3 | $0.15 |
 | **AWS VPCs** | Virtual Private Clouds | 4 | Free |
-| **AWS Subnets** | Public and private subnets | 8 | Free |
+| **AWS Subnets** | Public and private subnets | 10 | Free |
 | **AWS Internet Gateways** | Internet connectivity | 4 | Free |
 | **AWS Route Tables** | Routing configuration | 8 | Free |
-| **AWS Security Groups** | Firewall rules for test VMs | 3 | Free |
-| **EC2 Instances** | Test VMs (t3.micro) | 3 | $0.03 |
+| **AWS Security Groups** | Firewall rules for test VMs and Gatus | 5 | Free |
+| **EC2 Test Instances** | Test VMs (t3.micro) | 3 | $0.03 |
+| **EC2 Gatus Instance** | Dedicated monitoring VM (t3.micro) in prod public subnet | 1 | $0.01 |
+| **Application Load Balancer** | Internet-facing ALB exposing the Gatus dashboard | 1 | $0.02 |
+| **EC2 Instance Connect Endpoints** | Keyless SSH access to dev and prod VMs | 2 | Free |
 | **Elastic IPs** | Public IPs for gateways | 4 | $0.02 |
 | **DCF SmartGroups** | Dynamic network segments | 3 | Free |
 | **DCF Policies** | Zero Trust firewall rules | 5 | Free |
-| **Gatus (Docker)** | Live connectivity dashboards on Dev and Prod VMs | 2 | Free |
 
-**Total Estimated Cost**: ~$0.25/hour (~$6/day or ~$180/month)
+**Total Estimated Cost**: ~$0.28/hour (~$6.70/day)
+
+> **Note:** Costs are estimates for us-east-1 and may vary by region. Remember to destroy resources after testing.
 
 > **Note:** Costs are estimates for us-east-1 and may vary by region. Remember to destroy resources after testing.
 
@@ -82,7 +87,7 @@ This blueprint deploys:
 
 ```bash
 git clone https://github.com/AviatrixSystems/aviatrix-blueprints.git
-cd aviatrix-blueprints/blueprints/zero-trust-segmentation
+cd aviatrix-blueprints/blueprints/prevent-lateral-movement-vm-tags
 ```
 
 ### Step 2: Configure Environment Variables
@@ -185,38 +190,40 @@ test_vm_ids = {
 
 Save these IPs and instance IDs — you'll need them for the test scenarios below.
 
-### Step 7: Open the Gatus Live Dashboards
+### Step 7: Open the Gatus Live Dashboard
 
-> **Wait 5 minutes** after deployment before opening the dashboards. The Dev and Prod VMs need time to finish installing Docker and starting Gatus via `user_data`. SmartGroups also need this time to register the instances.
+Gatus runs on a **dedicated EC2 instance** in the prod VPC and is exposed publicly via an **Application Load Balancer** — no SSH tunnel or local tooling required. Just open a URL.
 
-Gatus runs automatically on the Dev and Prod VMs — no configuration needed. It monitors cross-environment connectivity every 10 seconds and shows a live RED/GREEN status dashboard for each DCF policy.
-
-**Get your tunnel commands:**
+**Get the dashboard URL:**
 
 ```bash
-terraform output gatus_dashboards
+terraform output gatus_dashboard_url
 ```
 
-**Open two terminals and run one command in each:**
+Open the URL in your browser. Example output:
 
-```bash
-# Terminal 1 — Dev dashboard (shows dev's Zero Trust view)
-aws ec2-instance-connect ssh --region us-east-1 --instance-id <dev-instance-id> -- -L 18080:localhost:8080 -N
-
-# Terminal 2 — Prod dashboard (shows prod's Zero Trust view)
-aws ec2-instance-connect ssh --region us-east-1 --instance-id <prod-instance-id> -- -L 28080:localhost:8080 -N
+```
+"http://zt-seg-gatus-alb-<id>.us-east-1.elb.amazonaws.com"
 ```
 
-> The `-N` flag keeps the tunnel open without opening a shell. Leave both terminals running while you use the dashboards. The exact commands with your instance IDs are in `terraform output gatus_dashboards`.
+> **Wait 3–5 minutes** after `terraform apply` before opening the dashboard. The Gatus EC2 instance needs to:
+> 1. Install Docker via `user_data` (~1–2 min)
+> 2. Pull the Gatus container image (~30 sec)
+> 3. Start the container and pass 2 consecutive ALB health checks (up to ~60 sec)
+>
+> If you see **503 Service Temporarily Unavailable**, the ALB health check hasn't passed yet — wait 60 seconds and refresh.
 
-**Open both in your browser:**
+**What you'll see when it's working:**
 
-| Dashboard | URL | What it shows |
-|-----------|-----|---------------|
-| **Dev** | http://localhost:18080 | Dev→DB: 🔴 BLOCKED / Dev→Prod ICMP: 🟢 ALLOWED / Dev→Prod TCP: 🔴 BLOCKED |
-| **Prod** | http://localhost:28080 | Prod→DB: 🟢 ALLOWED / Prod→Dev: 🔴 BLOCKED |
+| Tile | Status | What it proves |
+|------|--------|----------------|
+| **Prod to DB (ALLOWED — legitimate business traffic)** | 🟢 **Healthy** | `allow-prod-to-db` DCF policy (priority 100) is permitting production → database traffic |
+| **Prod to Dev ICMP (BLOCKED — no lateral movement)** | 🔴 **Unhealthy** | `deny-prod-to-dev` DCF policy (priority 210) is blocking lateral movement |
+| **Prod to Dev TCP (BLOCKED — default deny)** | 🔴 **Unhealthy** | No permit rule exists; caught by `default-deny-all` (priority 1000) |
 
-**Demo tip:** Open both tabs side by side before your presentation starts. The dashboards update every 10 seconds automatically — no commands needed during the demo. This lets you walk through the Zero Trust story while the audience watches live policy enforcement in real time.
+The dashboard probes update every **10 seconds** automatically. No commands needed during the demo.
+
+**Demo tip:** Open this URL in a browser tab before your presentation and leave it running. Walk through the Zero Trust story while the audience watches live DCF enforcement in real time — one GREEN tile proving legitimate traffic flows, two RED tiles proving lateral movement is blocked.
 
 ## Variables
 
@@ -303,7 +310,7 @@ aws ec2-instance-connect ssh --region us-east-1 --instance-id <dev-instance-id>
 ping <db-vm-private-ip>
 ```
 
-**Expected Result:** ❌ Ping times out — **Zero Trust Network Segmentation prevents dev from accessing the production database**
+**Expected Result:** ❌ Ping times out — **Prevent Lateral Movement - VM Tags prevents dev from accessing the production database**
 
 **What You'd See in CoPilot:**
 - **Navigation:** Security → Distributed Cloud Firewall → Monitor
@@ -313,7 +320,7 @@ ping <db-vm-private-ip>
   - Protocol: ICMP
   - Policy: "deny-dev-to-db"
   - Timestamp of blocked attempt
-- **Talking Point:** "This proves Zero Trust Network Segmentation is actively blocking lateral movement from dev to production data—exactly what compliance frameworks require"
+- **Talking Point:** "This proves Prevent Lateral Movement - VM Tags is actively blocking lateral movement from dev to production data—exactly what compliance frameworks require"
 
 ---
 
@@ -339,7 +346,7 @@ ping <db-vm-private-ip>
   - Destination: db-smartgroup (10.3.0.x)
   - Protocol: ALL
   - Policy: "allow-prod-to-db" (priority 100)
-- **Talking Point:** "Zero Trust Network Segmentation allows authorized traffic while blocking everything else—this is least-privilege access in action"
+- **Talking Point:** "Prevent Lateral Movement - VM Tags allows authorized traffic while blocking everything else—this is least-privilege access in action"
 
 ---
 
@@ -398,16 +405,16 @@ The script will:
 3. Report PASS/FAIL for each scenario
 4. Provide CoPilot verification instructions
 
-## Demo Walkthrough: Proving Zero Trust Network Segmentation
+## Demo Walkthrough: Proving Prevent Lateral Movement - VM Tags
 
 Use this sequence to demonstrate **customer outcomes** achieved through Zero Trust:
 
-### 1. The Problem: Why Zero Trust Network Segmentation (2 minutes)
+### 1. The Problem: Why Prevent Lateral Movement - VM Tags (2 minutes)
 
 **Talking Points:**
 - "Traditional security groups create flat networks—once connected, everything can talk to everything"
 - "83% of ransomware attacks succeed through lateral movement across unSegmented networks"
-- "Compliance frameworks (PCI-DSS, HIPAA) require Zero Trust Network Segmentation to protect sensitive data"
+- "Compliance frameworks (PCI-DSS, HIPAA) require Prevent Lateral Movement - VM Tags to protect sensitive data"
 
 **Show:** CoPilot > Topology - hub-and-spoke architecture connecting dev, prod, and database VPCs
 
@@ -438,13 +445,13 @@ Use this sequence to demonstrate **customer outcomes** achieved through Zero Tru
 
 ### 4. Live Testing: Zero Trust Blocking Lateral Movement (5 minutes)
 
-**Objective:** Demonstrate Zero Trust Network Segmentation actively preventing attacks
+**Objective:** Demonstrate Prevent Lateral Movement - VM Tags actively preventing attacks
 
 **Test Sequence:**
 1. **Dev → DB (BLOCKED)**: "This simulates an attacker who compromised dev trying to reach production data"
    - Run ping test, show TIMEOUT
    - Show **DCF Monitor** with red DENIED entry
-   - **Message:** "Zero Trust Network Segmentation stopped the lateral movement"
+   - **Message:** "Prevent Lateral Movement - VM Tags stopped the lateral movement"
 
 2. **Prod → DB (ALLOWED)**: "Legitimate business traffic flows freely"
    - Show green PERMITTED entry
@@ -455,7 +462,7 @@ Use this sequence to demonstrate **customer outcomes** achieved through Zero Tru
 ### 5. The Business Value of Zero Trust (2 minutes)
 
 **Emphasize Outcomes:**
-- ✅ **Speed:** "Deployed Zero Trust Network Segmentation in 15 minutes with Terraform"
+- ✅ **Speed:** "Deployed Prevent Lateral Movement - VM Tags in 15 minutes with Terraform"
 - ✅ **Security:** "Lateral movement blocked—ransomware can't spread"
 - ✅ **Compliance:** "Complete audit trail proves microsegmentation for PCI/HIPAA/SOC 2"
 - ✅ **Operations:** "No security group sprawl—tag once, secured forever"
@@ -463,7 +470,7 @@ Use this sequence to demonstrate **customer outcomes** achieved through Zero Tru
 
 **Total Demo Time:** ~15 minutes
 
-**Closing:** "This is Zero Trust Network Segmentation at scale—faster, more secure, and with less overhead than native cloud security groups."
+**Closing:** "This is Prevent Lateral Movement - VM Tags at scale—faster, more secure, and with less overhead than native cloud security groups."
 
 ## Cleanup
 
@@ -495,12 +502,12 @@ Confirm no resources remain:
 ```bash
 # Check for remaining VPCs
 aws ec2 describe-vpcs \
-  --filters "Name=tag:Blueprint,Values=zero-trust-segmentation" \
+  --filters "Name=tag:Blueprint,Values=prevent-lateral-movement-vm-tags" \
   --query 'Vpcs[].VpcId'
 
 # Check for remaining instances
 aws ec2 describe-instances \
-  --filters "Name=tag:Blueprint,Values=zero-trust-segmentation" \
+  --filters "Name=tag:Blueprint,Values=prevent-lateral-movement-vm-tags" \
   --query 'Reservations[].Instances[].InstanceId'
 ```
 
@@ -586,7 +593,7 @@ This blueprint is currently tested with:
 
 > **Note**: The blueprint may work with other versions, but these are the versions used for validation.
 
-## Customer Use Cases: Zero Trust Network Segmentation Outcomes
+## Customer Use Cases: Prevent Lateral Movement - VM Tags Outcomes
 
 ### 1. PCI-DSS Compliance: Cardholder Data Environment Segmentation
 
@@ -597,7 +604,7 @@ This blueprint is currently tested with:
 - DCF Policy: **DENY** all non-CDE → CDE traffic (blocks lateral movement)
 - Audit trail via DCF Monitor proves segmentation for compliance assessors
 
-**Customer Outcome:** Pass PCI audit with documented Zero Trust Network Segmentation
+**Customer Outcome:** Pass PCI audit with documented Prevent Lateral Movement - VM Tags
 
 ---
 
@@ -623,7 +630,7 @@ This blueprint is currently tested with:
 - DCF Policy: Explicit allow **ONLY** for authorized medical applications
 - Default-deny blocks all unauthorized PHI access
 
-**Customer Outcome:** Meet HIPAA audit requirements with Zero Trust Network Segmentation audit trail
+**Customer Outcome:** Meet HIPAA audit requirements with Prevent Lateral Movement - VM Tags audit trail
 
 ---
 
@@ -648,18 +655,18 @@ Apache 2.0 - See [LICENSE](../../LICENSE)
 
 ---
 
-## Ready to Deploy Zero Trust Network Segmentation?
+## Ready to Deploy Prevent Lateral Movement - VM Tags?
 
 ### Quick Start
 
 ```bash
 git clone https://github.com/AviatrixSystems/aviatrix-blueprints.git
-cd aviatrix-blueprints/blueprints/zero-trust-segmentation
+cd aviatrix-blueprints/blueprints/prevent-lateral-movement-vm-tags
 terraform apply
 ```
 
 **In 15 minutes, you'll have:**
-- ✅ Zero Trust Network Segmentation across 3 VPCs
+- ✅ Prevent Lateral Movement - VM Tags across 3 VPCs
 - ✅ Lateral movement protection (dev → database blocked)
 - ✅ Compliance audit trail (every denied connection logged)
 - ✅ Tag-based automation (zero security group sprawl)
