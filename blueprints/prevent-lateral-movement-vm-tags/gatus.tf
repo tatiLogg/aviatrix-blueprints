@@ -56,18 +56,14 @@ resource "aws_route_table_association" "gatus_alb_subnet" {
 # needs this explicit route so Gatus ICMP probes traverse the Aviatrix fabric
 # and are subject to DCF policy evaluation.
 data "aws_instance" "prod_spoke_gw" {
-  filter {
-    name   = "tag:Name"
-    values = ["aviatrix-${var.name_prefix}-prod-spoke-gw"]
-  }
-  filter {
-    name   = "vpc-id"
-    values = [aws_vpc.spokes["prod"].id]
-  }
-  filter {
-    name   = "instance-state-name"
-    values = ["running"]
-  }
+  # depends_on ensures this data source does not run before the spoke gateway
+  # resource completes. aviatrix_spoke_gateway marks itself done in Terraform
+  # before the underlying EC2 instance reaches "running" state in AWS, so a
+  # tag+state filter races and fails on first apply. Using cloud_instance_id
+  # (assigned at instance creation, before running state) makes the lookup
+  # deterministic on both apply and destroy.
+  depends_on  = [aviatrix_spoke_gateway.spokes]
+  instance_id = aviatrix_spoke_gateway.spokes["prod"].cloud_instance_id
 }
 
 resource "aws_route" "gatus_via_aviatrix" {
