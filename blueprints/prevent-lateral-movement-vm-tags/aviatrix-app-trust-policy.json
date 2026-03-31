@@ -4,7 +4,7 @@
     {
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::565569641641:root"
+        "AWS": "arn:aws:iam::<YOUR_AVIATRIX_CONTROLLER_AWS_ACCOUNT_ID>:root"
       },
       "Action": "sts:AssumeRole",
       "Condition": {}
