@@ -15,7 +15,7 @@ Deploy **Zero Trust microsegmentation** in 15 minutes using Aviatrix Distributed
 |-----------|-------------|-------|
 | **Aviatrix Controller** | v7.1+ | Must be deployed, accessible, and have your AWS account onboarded under **Accounts > Access Accounts** |
 | **Aviatrix CoPilot** | Required | Used for topology visualization, DCF Monitor, and SmartGroup verification during the demo |
-| **DCF** | Must be **disabled** | If DCF is already enabled on your Controller with active policies, disable it before running `terraform destroy` — otherwise the destroy will fail. See [Cleanup](#cleanup). |
+| **DCF** | Must be **enabled** | Enable DCF before deploying: Controller > Security > Distributed Cloud Firewall > Configuration > Enable. This blueprint manages SmartGroups and policies only — it does not enable/disable DCF, so `terraform destroy` will never conflict with other active policies. |
 
 ### Local Tools
 
@@ -312,13 +312,9 @@ ping <db-vm-private-ip>  # Times out — DCF blocked it
 
 ## Cleanup
 
-### ⚠️ Important: DCF Prerequisite for Destroy
+### Destroy Notes
 
-`terraform destroy` will attempt to disable DCF on your Controller. If your Controller has **other active DCF policies outside this blueprint**, the Controller will reject the request and destroy will fail.
-
-**Before running `terraform destroy`:**
-- If DCF is only used by this blueprint: proceed normally
-- If DCF is shared with other policies: manually remove or disable those policies first, then destroy
+This blueprint does not manage DCF enable/disable — only SmartGroups and policies. `terraform destroy` removes only the resources this blueprint created. Your Controller's DCF configuration remains untouched.
 
 ### Destroy
 
@@ -375,8 +371,8 @@ Both commands should return `[]`.
 - The Gatus EC2 instance needs ~3–5 minutes to boot, pull Docker image, and start the container
 
 **`terraform destroy` fails with DCF error**
-- Your Controller has active DCF policies outside this blueprint
-- Disable or remove those policies in CoPilot before retrying destroy
+- This should not occur as this blueprint does not manage DCF enable/disable
+- If it does, verify you are running the latest version of the blueprint
 
 **Can't SSH to test VMs**
 - Use EC2 Instance Connect: `aws ec2-instance-connect ssh --instance-id <id> --region us-east-1`

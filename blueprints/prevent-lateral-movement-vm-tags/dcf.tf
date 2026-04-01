@@ -2,14 +2,13 @@
 # Distributed Cloud Firewall (DCF) Configuration
 # ============================================================================
 
-# Enable DCF
-resource "aviatrix_distributed_firewalling_config" "main" {
-  enable_distributed_firewalling = true
-}
-
 # ============================================================================
 # SmartGroups - Define network segments
 # ============================================================================
+# NOTE: DCF must already be enabled on your Controller before deploying this
+# blueprint. Enable it at: Controller > Security > Distributed Cloud Firewall
+# > Configuration > Enable. This blueprint does not manage DCF enable/disable
+# so that terraform destroy never conflicts with other active DCF policies.
 
 # Development Environment SmartGroup
 resource "aviatrix_smart_group" "dev" {
@@ -65,7 +64,6 @@ resource "aviatrix_smart_group" "db" {
 
 resource "aviatrix_distributed_firewalling_policy_list" "main" {
   depends_on = [
-    aviatrix_distributed_firewalling_config.main,
     aviatrix_smart_group.dev,
     aviatrix_smart_group.prod,
     aviatrix_smart_group.db

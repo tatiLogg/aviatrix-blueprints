@@ -61,6 +61,8 @@ It does this using **Aviatrix Distributed Cloud Firewall (DCF)** with **SmartGro
 - Stores and enforces DCF policy configuration
 - Manages SmartGroup membership in real time
 
+> **DCF must be enabled on the Controller before deploying.** Enable it at: Security > Distributed Cloud Firewall > Configuration > Enable. This blueprint manages SmartGroups and policies only — it deliberately does not enable/disable DCF so that `terraform destroy` never conflicts with other active policies on shared Controllers.
+
 **What to show in the demo:** The Controller itself is mostly invisible during the demo — everything is shown in CoPilot. Mention it exists as the management plane.
 
 ---
