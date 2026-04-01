@@ -9,11 +9,11 @@
 # in a browser. No local tooling dependencies.
 #
 # IMPORTANT - DCF SmartGroup classification:
-# This instance is tagged Environment = "monitoring" (not in any SmartGroup).
-# Aviatrix DCF enforces policy based on SmartGroup membership; unclassified
-# instances are subject to the default-deny-all rule. For the dashboard to
-# show meaningful GREEN results (prod→db allowed), change the Environment tag
-# to "production" or add a dedicated monitoring SmartGroup + permit policy.
+# This instance is tagged Environment = "production" so it is classified into
+# the prod SmartGroup. This allows the allow-prod-to-db policy (priority 100)
+# to apply — Gatus probes originate from "prod" and can reach "db", producing
+# the GREEN tile in the dashboard. Do not change this tag or the probe results
+# will not reflect the intended DCF policy outcomes.
 # ============================================================================
 
 locals {

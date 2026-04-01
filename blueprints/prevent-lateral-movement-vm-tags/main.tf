@@ -213,10 +213,38 @@ resource "aviatrix_spoke_gateway" "spokes" {
 #
 # Only dev and prod need endpoints (Gatus runs there). DB is a target-only VM.
 
+# Security group for EC2 Instance Connect Endpoints.
+# Allows outbound SSH (port 22) to the spoke VPC CIDR only.
+resource "aws_security_group" "eice" {
+  for_each = { for k, v in var.spokes : k => v if k != "db" }
+
+  name_prefix = "${var.name_prefix}-${each.key}-eice-sg"
+  description = "Security group for EC2 Instance Connect Endpoint in ${each.key} spoke"
+  vpc_id      = aws_vpc.spokes[each.key].id
+
+  egress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.spokes[each.key].cidr]
+    description = "SSH to ${each.key} spoke VMs only"
+  }
+
+  tags = merge(local.common_tags, {
+    Name        = "${var.name_prefix}-${each.key}-eice-sg"
+    Environment = each.value.environment
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
 resource "aws_ec2_instance_connect_endpoint" "spokes" {
   for_each = { for k, v in var.spokes : k => v if k != "db" }
 
   subnet_id          = aws_subnet.spokes_public[each.key].id
+  security_group_ids = [aws_security_group.eice[each.key].id]
   preserve_client_ip = false
 
   tags = merge(local.common_tags, {
@@ -236,22 +264,26 @@ resource "aws_security_group" "test_vms" {
   description = "Security group for ${each.key} test VM"
   vpc_id      = aws_vpc.spokes[each.key].id
 
-  # Allow SSH from anywhere (for demo purposes)
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "SSH access"
+  # DB has no EICE (target-only VM) — SSH allowed within VPC CIDR only.
+  # Dev/prod SSH is added via aws_security_group_rule below (requires source SG reference).
+  dynamic "ingress" {
+    for_each = each.key == "db" ? [1] : []
+    content {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = [var.spokes[each.key].cidr]
+      description = "SSH within VPC CIDR only"
+    }
   }
 
-  # Allow ICMP (ping) from anywhere
+  # Allow ICMP (ping) from within the RFC1918 range for DCF policy testing
   ingress {
     from_port   = -1
     to_port     = -1
     protocol    = "icmp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "ICMP ping"
+    cidr_blocks = ["10.0.0.0/8"]
+    description = "ICMP ping from private address space"
   }
 
   # Allow all outbound
@@ -299,6 +331,21 @@ resource "aws_instance" "test_vms" {
     Environment = each.value.environment
     Role        = "test-instance"
   })
+}
+
+# SSH ingress from EICE security group for dev and prod test VMs.
+# Uses aws_security_group_rule (not inline ingress) because source_security_group_id
+# is not supported in inline ingress blocks.
+resource "aws_security_group_rule" "test_vm_ssh_from_eice" {
+  for_each = { for k, v in var.spokes : k => v if k != "db" }
+
+  type                     = "ingress"
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.eice[each.key].id
+  security_group_id        = aws_security_group.test_vms[each.key].id
+  description              = "SSH from EC2 Instance Connect Endpoint only"
 }
 
 # ============================================================================
