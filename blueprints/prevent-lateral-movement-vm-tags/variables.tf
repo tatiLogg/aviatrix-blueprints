@@ -1,7 +1,7 @@
 variable "name_prefix" {
   description = "Prefix for all resource names"
   type        = string
-  default     = "plm"
+  default     = "zt-seg"
 }
 
 variable "aws_region" {
