@@ -484,6 +484,13 @@ Type `yes` when prompted to confirm.
 
 **Destroy takes approximately 8-10 minutes.**
 
+> **⚠️ If you already have DCF enabled on your Controller with policies outside this blueprint**, use `destroy.sh` instead:
+> ```bash
+> chmod +x destroy.sh
+> ./destroy.sh
+> ```
+> `terraform destroy` will attempt to disable DCF on the Controller. If other active DCF policies exist, the Controller will reject the request and destroy will fail. `destroy.sh` removes `aviatrix_distributed_firewalling_config` from Terraform state first, so only this blueprint's resources are torn down — your existing DCF configuration is left untouched.
+
 ### Manual Cleanup (if destroy fails)
 
 If Terraform destroy fails, manually delete resources in this order:
