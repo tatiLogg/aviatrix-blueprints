@@ -1,87 +1,159 @@
-# Prevent Lateral Movement - VM Tags with Aviatrix DCF
+# Prevent Lateral Movement - VM Tags
 
-Deploy **Prevent Lateral Movement - VM Tags** in 15 minutes using Aviatrix Distributed Cloud Firewall (DCF) with SmartGroups. This blueprint achieves microsegmentation across AWS VPCs—**preventing lateral movement, accelerating compliance, and eliminating security group sprawl**—with tag-based automation that scales.
-
-## Customer Outcomes
-
-✅ **80% faster Zero Trust implementation** - 15 minutes vs. weeks of security group configuration
-✅ **Zero lateral movement risk** - Breaches contained to single workload, preventing ransomware spread
-✅ **Compliance-ready** - Meet PCI-DSS, HIPAA, SOC 2 microsegmentation requirements with audit trail
-✅ **90% reduction in policy overhead** - Tag-based SmartGroups eliminate manual security rule management
-✅ **Multi-cloud consistency** - Same Zero Trust policies across AWS, Azure, GCP
+Deploy **Zero Trust microsegmentation** in 15 minutes using Aviatrix Distributed Cloud Firewall (DCF) and SmartGroups. This blueprint enforces tag-based network segmentation across AWS VPCs — preventing lateral movement, accelerating compliance, and eliminating security group sprawl.
 
 > [!TIP]
 > **🤖 Optimized for Claude Code** — Run `/deploy-blueprint prevent-lateral-movement-vm-tags` for AI-guided deployment with prerequisite checks, or `/analyze-blueprint prevent-lateral-movement-vm-tags` for resource and cost details. [Get Claude Code](https://claude.ai/code)
 
 ---
 
-## Architecture
+## Prerequisites
+
+### Aviatrix Control Plane
+
+| Component | Requirement | Notes |
+|-----------|-------------|-------|
+| **Aviatrix Controller** | v7.1+ | Must be deployed, accessible, and have your AWS account onboarded under **Accounts > Access Accounts** |
+| **Aviatrix CoPilot** | Required | Used for topology visualization, DCF Monitor, and SmartGroup verification during the demo |
+| **DCF** | Must be **disabled** | If DCF is already enabled on your Controller with active policies, disable it before running `terraform destroy` — otherwise the destroy will fail. See [Cleanup](#cleanup). |
+
+### Local Tools
+
+| Tool | Version | Installation | Purpose |
+|------|---------|--------------|---------|
+| **Terraform** | >= 1.5 | [Install Guide](https://developer.hashicorp.com/terraform/install) | Infrastructure provisioning |
+| **AWS CLI** | v2 | [Install Guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) | AWS authentication and EC2 Instance Connect |
+
+### AWS IAM Permissions
+
+Two IAM roles must exist in your AWS account **before** deploying. The Aviatrix Controller uses these roles to launch and manage gateways.
+
+| Role | Policies Required | Purpose |
+|------|------------------|---------|
+| `aviatrix-role-app` | `PowerUserAccess` + `IAMReadOnlyAccess` + custom `AviatrixIAMAccess`* | Controller assumes this role to manage AWS resources |
+| `aviatrix-role-ec2` | `AmazonS3ReadOnlyAccess` | Attached to gateway EC2 instances for software updates |
+
+**\*Custom `AviatrixIAMAccess` policy actions required:**
+`iam:CreateInstanceProfile`, `iam:DeleteInstanceProfile`, `iam:AddRoleToInstanceProfile`, `iam:RemoveRoleFromInstanceProfile`, `iam:GetInstanceProfile`, `iam:TagInstanceProfile`, `iam:UntagInstanceProfile`, `iam:PassRole`, `iam:GetRole`, `iam:GetRolePolicy`, `iam:ListInstanceProfiles`, `iam:ListRoles`
+
+> **Trust relationships:** `aviatrix-role-app` must trust the AWS account where your Controller runs (`arn:aws:iam::<controller-account-id>:root`). `aviatrix-role-ec2` must trust the EC2 service (`ec2.amazonaws.com`).
+>
+> If these roles don't exist, see the [Aviatrix onboarding documentation](https://docs.aviatrix.com/documentation/latest/getting-started/onboarding-aws-access-account.html).
+
+### Environment Variables
+
+Set these before running Terraform:
+
+```bash
+# Aviatrix Controller credentials
+export AVIATRIX_CONTROLLER_IP="<your-controller-ip>"
+export AVIATRIX_USERNAME="admin"
+export AVIATRIX_PASSWORD="<your-password>"
+
+# AWS credentials (choose one method)
+# Option A: Environment variables
+export AWS_ACCESS_KEY_ID="<your-access-key>"
+export AWS_SECRET_ACCESS_KEY="<your-secret-key>"
+export AWS_DEFAULT_REGION="us-east-1"
+
+# Option B: AWS CLI profile
+export AWS_PROFILE="<your-profile-name>"
+```
+
+### Verify Prerequisites
+
+```bash
+# Confirm AWS credentials are active
+aws sts get-caller-identity
+
+# Confirm EC2 key pair exists in the target region
+aws ec2 describe-key-pairs --region us-east-1 --query 'KeyPairs[].KeyName'
+
+# Confirm sufficient Elastic IP quota (need 4 free EIPs)
+aws ec2 describe-account-attributes --attribute-names max-elastic-ips --query 'AccountAttributes[0].AttributeValues[0].AttributeValue'
+aws ec2 describe-addresses --query 'Addresses | length(@)'
+# Available EIPs = quota - current count. Must be >= 4.
+```
+
+Also confirm in the Aviatrix Controller that your AWS account is onboarded under **Accounts > Access Accounts** before proceeding. Gateway creation will time out if the account is not onboarded.
+
+---
+
+## Architecture Overview
 
 ![Architecture Diagram](architecture.svg)
 
-This blueprint deploys:
-- **1 Aviatrix Transit Gateway** - Central hub for all spoke connectivity
-- **3 Aviatrix Spoke Gateways** - One for each environment (Dev, Prod, DB)
-- **3 AWS VPCs** - Isolated network segments for each environment
-- **3 EC2 Test Instances** - One per environment for connectivity validation
-- **3 DCF SmartGroups** - Dynamic groups based on environment tags
-- **5 DCF Policies** - Zero Trust rules enforcing segmentation
-- **1 Gatus monitoring instance + ALB** - Live Zero Trust dashboard, browser-accessible with no SSH required
+> **For a detailed breakdown of every component, how they connect, and what to explain during a customer demo, see [ARCHITECTURE.md](ARCHITECTURE.md).**
 
-**Prevent Lateral Movement - VM Tags Policies:**
-- ✅ **Prod → DB**: PERMIT (legitimate business need - explicit allow)
-- ✅ **Dev → Prod**: PERMIT ICMP only (monitoring access - protocol-level granularity)
-- ❌ **Dev → DB**: **DENY** (blocks lateral movement from dev to production data)
-- ❌ **Prod → Dev**: **DENY** (prevents compromised production from affecting dev)
-- ❌ **Default**: **DENY ALL** (Zero Trust default-deny - no implicit trust)
+This blueprint deploys the following into a single AWS region:
 
-**Zero Trust Benefit:** Even if an attacker compromises the dev environment, Prevent Lateral Movement - VM Tags prevents access to production databases—containing the breach and stopping ransomware lateral movement.
+| Component | Count | Description |
+|-----------|-------|-------------|
+| Aviatrix Transit Gateway | 1 | Central hub connecting all spokes |
+| Aviatrix Spoke Gateways | 3 | One each for Dev, Prod, and DB VPCs |
+| AWS VPCs | 4 | Transit + Dev + Prod + DB |
+| EC2 Test VMs | 3 | One per spoke VPC for connectivity testing |
+| EC2 Instance Connect Endpoints | 2 | Secure, keyless SSH tunnel to Dev and Prod VMs — no bastion, no public IP needed |
+| DCF SmartGroups | 3 | Tag-based groups: dev, prod, db |
+| DCF Policies | 5 | Zero Trust rules — see table below |
+| Gatus Dashboard | 1 | Live connectivity dashboard (ALB-exposed, browser accessible) |
 
-## Prerequisites
+**DCF Policies configured:**
 
-### Required Tools
+| Priority | Policy | Action | What it proves |
+|----------|--------|--------|----------------|
+| 100 | `allow-prod-to-db` | PERMIT | Legitimate business traffic flows |
+| 110 | `allow-dev-to-prod-read-only` | PERMIT (ICMP only) | Protocol-level granularity |
+| 200 | `deny-dev-to-db` | DENY | Lateral movement from dev to production data blocked |
+| 210 | `deny-prod-to-dev` | DENY | Compromised prod cannot reach dev |
+| 1000 | `default-deny-all` | DENY | Zero Trust default — no implicit trust |
 
-- [Aviatrix Control Plane](../../docs/prerequisites/aviatrix-controller.md) (v7.1+) - Controller and CoPilot
-- [Terraform](../../docs/prerequisites/terraform.md) (v1.5+)
-- [AWS CLI](../../docs/prerequisites/aws-cli.md)
-
-### Required Access
-
-- AWS account with permissions to create VPCs, EC2 instances, and networking resources
-- Aviatrix Control Plane with AWS account onboarded
-- AWS EC2 key pair for SSH access to test VMs
-
-### Blueprint-Specific Requirements
-
-- At least 3 available Elastic IPs in the target AWS region
-- AWS Systems Manager (SSM) permissions if using automated test script
+---
 
 ## Resources Created
 
-| Resource | Description | Quantity | Estimated Cost/Hour |
-|----------|-------------|----------|---------------------|
-| **Aviatrix Transit Gateway** | Central hub gateway (t3.small) | 1 | $0.05 |
-| **Aviatrix Spoke Gateways** | Spoke gateways for each environment (t3.small) | 3 | $0.15 |
-| **AWS VPCs** | Virtual Private Clouds | 4 | Free |
-| **AWS Subnets** | Public and private subnets | 10 | Free |
-| **AWS Internet Gateways** | Internet connectivity | 4 | Free |
-| **AWS Route Tables** | Routing configuration | 8 | Free |
-| **AWS Security Groups** | Firewall rules for test VMs and Gatus | 5 | Free |
-| **EC2 Test Instances** | Test VMs (t3.micro) | 3 | $0.03 |
-| **EC2 Gatus Instance** | Dedicated monitoring VM (t3.micro) in prod public subnet | 1 | $0.01 |
-| **Application Load Balancer** | Internet-facing ALB exposing the Gatus dashboard | 1 | $0.02 |
-| **EC2 Instance Connect Endpoints** | Keyless SSH access to dev and prod VMs | 2 | Free |
-| **Elastic IPs** | Public IPs for gateways | 4 | $0.02 |
-| **DCF SmartGroups** | Dynamic network segments | 3 | Free |
-| **DCF Policies** | Zero Trust firewall rules | 5 | Free |
+| Resource | Quantity | Estimated Cost/Hour |
+|----------|----------|---------------------|
+| Aviatrix Transit Gateway (t3.small) | 1 | $0.05 |
+| Aviatrix Spoke Gateways (t3.small) | 3 | $0.15 |
+| EC2 Test VMs (t3.micro) | 3 | $0.03 |
+| EC2 Gatus Instance (t3.micro) | 1 | $0.01 |
+| Application Load Balancer | 1 | $0.02 |
+| Elastic IPs | 4 | $0.02 |
+| EC2 Instance Connect Endpoints | 2 | Free |
+| VPCs, Subnets, Route Tables, IGWs | Multiple | Free |
+| DCF SmartGroups + Policies | 3 + 5 | Free |
 
-**Total Estimated Cost**: ~$0.28/hour (~$6.70/day)
+**Total: ~$0.28/hour (~$6.70/day)**
 
-> **Note:** Costs are estimates for us-east-1 and may vary by region. Remember to destroy resources after testing.
+> Destroy resources after testing to avoid ongoing charges.
 
-> **Note:** Costs are estimates for us-east-1 and may vary by region. Remember to destroy resources after testing.
+---
 
-## Deployment
+## Quickstart
+
+```bash
+git clone https://github.com/AviatrixSystems/aviatrix-blueprints.git
+cd aviatrix-blueprints/blueprints/prevent-lateral-movement-vm-tags
+
+# Set credentials (see Prerequisites)
+export AVIATRIX_CONTROLLER_IP="<your-controller-ip>"
+export AVIATRIX_USERNAME="admin"
+export AVIATRIX_PASSWORD="<your-password>"
+export AWS_PROFILE="<your-profile>"
+
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
+
+terraform init
+terraform apply
+```
+
+**Total deployment time: ~15 minutes**
+
+---
+
+## Deployment Guide
 
 ### Step 1: Clone and Navigate
 
@@ -90,52 +162,7 @@ git clone https://github.com/AviatrixSystems/aviatrix-blueprints.git
 cd aviatrix-blueprints/blueprints/prevent-lateral-movement-vm-tags
 ```
 
-### Step 2: Configure Environment Variables
-
-**Aviatrix credentials** — always set these as environment variables:
-
-```bash
-export AVIATRIX_CONTROLLER_IP="<your-controller-ip>"
-export AVIATRIX_USERNAME="admin"
-export AVIATRIX_PASSWORD="<your-password>"
-```
-
-**AWS credentials** — use one of the following options:
-
-```bash
-# Option A: Environment variables (access key / secret key)
-export AWS_ACCESS_KEY_ID="<your-access-key>"
-export AWS_SECRET_ACCESS_KEY="<your-secret-key>"
-export AWS_DEFAULT_REGION="us-east-1"
-
-# Option B: AWS CLI profile (if already configured via `aws configure` or SSO)
-export AWS_PROFILE="<your-profile-name>"
-```
-
-> If you're unsure which to use, run `aws sts get-caller-identity` — if it returns your account ID, your AWS credentials are already active and you can skip Option A/B.
-
-### Step 3: Pre-Deployment Checklist
-
-Before applying, verify these prerequisites are in place:
-
-```bash
-# 1. Confirm AWS credentials are active
-aws sts get-caller-identity
-
-# 2. Confirm your EC2 key pair exists in the target region
-aws ec2 describe-key-pairs --region us-east-1 --query 'KeyPairs[].KeyName'
-# If the key pair you plan to use is not listed, create one:
-# aws ec2 create-key-pair --key-name my-keypair --region us-east-1 --query 'KeyMaterial' --output text > my-keypair.pem
-
-# 3. Confirm sufficient Elastic IP quota (need 4 free EIPs)
-aws ec2 describe-account-attributes --attribute-names max-elastic-ips --query 'AccountAttributes[0].AttributeValues[0].AttributeValue'
-aws ec2 describe-addresses --query 'Addresses | length(@)'
-# Available EIPs = quota - current count. Must be >= 4.
-```
-
-Also confirm in the Aviatrix Controller that your AWS account is onboarded under **Accounts > Access Accounts** before proceeding. Gateway creation will time out if the account is not onboarded.
-
-### Step 4: Configure Variables
+### Step 2: Configure Variables
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars
@@ -144,14 +171,14 @@ cp terraform.tfvars.example terraform.tfvars
 Edit `terraform.tfvars` with your values:
 
 ```hcl
-aws_account_name      = "my-aws-account"  # As configured in Aviatrix Controller > Accounts
+aws_account_name      = "my-aws-account"  # Must match account name in Controller > Accounts
 aws_region            = "us-east-1"
 name_prefix           = "zt-seg"
-test_vm_key_name      = "my-keypair"      # Must match a key pair name from Step 3 above
+test_vm_key_name      = "my-keypair"      # Must exist in the target region
 test_vm_instance_type = "t3.micro"
 ```
 
-### Step 5: Deploy
+### Step 3: Deploy
 
 ```bash
 terraform init
@@ -159,352 +186,160 @@ terraform plan
 terraform apply
 ```
 
-Type `yes` when prompted to confirm.
+Type `yes` when prompted. **Deployment takes approximately 10–15 minutes.**
 
-**Deployment takes approximately 10-15 minutes.**
-
-### Step 6: Verify Deployment
-
-After deployment completes, run:
-
-```bash
-terraform output test_vm_private_ips
-terraform output test_vm_ids
-```
-
-Expected output:
-
-```
-test_vm_private_ips = {
-  "db"   = "10.3.0.x"
-  "dev"  = "10.1.0.x"
-  "prod" = "10.2.0.x"
-}
-
-test_vm_ids = {
-  "db"   = "i-0xxxxxxxxxxxxxxxxx"
-  "dev"  = "i-0xxxxxxxxxxxxxxxxx"
-  "prod" = "i-0xxxxxxxxxxxxxxxxx"
-}
-```
-
-Save these IPs and instance IDs — you'll need them for the test scenarios below.
-
-### Step 7: Open the Gatus Live Dashboard
-
-Gatus runs on a **dedicated EC2 instance** in the prod VPC and is exposed publicly via an **Application Load Balancer** — no SSH tunnel or local tooling required. Just open a URL.
-
-**Get the dashboard URL:**
+### Step 4: Open the Gatus Live Dashboard
 
 ```bash
 terraform output gatus_dashboard_url
 ```
 
-Open the URL in your browser. Example output:
+Open the URL in a browser. Wait 3–5 minutes after apply for the Gatus instance to boot and pass ALB health checks. If you see **503**, wait 60 seconds and refresh.
 
-```
-"http://zt-seg-gatus-alb-<id>.us-east-1.elb.amazonaws.com"
-```
-
-> **Wait 3–5 minutes** after `terraform apply` before opening the dashboard. The Gatus EC2 instance needs to:
-> 1. Install Docker via `user_data` (~1–2 min)
-> 2. Pull the Gatus container image (~30 sec)
-> 3. Start the container and pass 2 consecutive ALB health checks (up to ~60 sec)
->
-> If you see **503 Service Temporarily Unavailable**, the ALB health check hasn't passed yet — wait 60 seconds and refresh.
-
-**What you'll see when it's working:**
+**What you'll see:**
 
 | Tile | Status | What it proves |
 |------|--------|----------------|
-| **Prod to DB (ALLOWED — legitimate business traffic)** | 🟢 **Healthy** | `allow-prod-to-db` DCF policy (priority 100) is permitting production → database traffic |
-| **Prod to Dev ICMP (BLOCKED — no lateral movement)** | 🔴 **Unhealthy** | `deny-prod-to-dev` DCF policy (priority 210) is blocking lateral movement |
-| **Prod to Dev TCP (BLOCKED — default deny)** | 🔴 **Unhealthy** | No permit rule exists; caught by `default-deny-all` (priority 1000) |
+| Prod → DB (ALLOWED) | 🟢 Healthy | `allow-prod-to-db` policy permitting legitimate traffic |
+| Prod → Dev ICMP (BLOCKED) | 🔴 Unhealthy | `deny-prod-to-dev` blocking lateral movement |
+| Prod → Dev TCP (BLOCKED) | 🔴 Unhealthy | `default-deny-all` catching everything else |
 
-The dashboard probes update every **10 seconds** automatically. No commands needed during the demo.
+Dashboard probes update every 10 seconds. Leave it open during the demo — the audience sees live DCF enforcement without any commands.
 
-**Demo tip:** Open this URL in a browser tab before your presentation and leave it running. Walk through the Zero Trust story while the audience watches live DCF enforcement in real time — one GREEN tile proving legitimate traffic flows, two RED tiles proving lateral movement is blocked.
+### Step 5: Verify in CoPilot
 
-## Variables
+1. Log into your Controller and click **CoPilot** in the top navigation
+2. **Cloud Fabric > Topology** — verify Transit + 3 Spoke gateways are visible and connected
+3. **Security > Distributed Cloud Firewall > SmartGroups** — verify 3 SmartGroups exist with correct VM membership
+4. **Security > Distributed Cloud Firewall > Rules** — verify all 5 policies are configured
+5. **Security > Distributed Cloud Firewall > Monitor** — use this during test scenarios to see live PERMITTED/DENIED entries
 
-| Variable | Description | Type | Default | Required |
-|----------|-------------|------|---------|----------|
-| `name_prefix` | Prefix for all resource names | `string` | `"zt-seg"` | no |
-| `aws_region` | AWS region for deployment | `string` | `"us-east-1"` | no |
-| `aws_account_name` | Aviatrix Access Account name for AWS | `string` | - | **yes** |
-| `test_vm_key_name` | EC2 key pair name for SSH access | `string` | - | **yes** |
-| `test_vm_instance_type` | EC2 instance type for test VMs | `string` | `"t3.micro"` | no |
-| `transit_gateway` | Transit gateway configuration | `object` | See below | no |
-| `spokes` | Spoke gateway configurations | `map(object)` | See below | no |
-
-**Default `transit_gateway` value:**
-```hcl
-{
-  cidr       = "10.0.0.0/23"
-  asn        = 64512
-  ha_enabled = false
-}
-```
-
-**Default `spokes` value:**
-```hcl
-{
-  dev = {
-    cidr        = "10.1.0.0/24"
-    environment = "development"
-  }
-  prod = {
-    cidr        = "10.2.0.0/24"
-    environment = "production"
-  }
-  db = {
-    cidr        = "10.3.0.0/24"
-    environment = "database"
-  }
-}
-```
-
-## Outputs
-
-| Output | Description |
-|--------|-------------|
-| `transit_gateway_name` | Name of the Aviatrix Transit Gateway |
-| `spoke_gateways` | Map of spoke gateway names |
-| `test_vm_private_ips` | Private IP addresses of test VMs |
-| `test_vm_ids` | Instance IDs of test VMs |
-| `smartgroup_uuids` | UUIDs of created SmartGroups |
-| `gatus_dashboards` | SSH tunnel commands and URLs for Gatus dashboards |
-| `test_scenarios` | Detailed test scenarios with expected results |
-| `copilot_verification_steps` | Steps to verify deployment in CoPilot |
+---
 
 ## Test Scenarios
 
-### Accessing CoPilot
+### Automated — Gatus Dashboard (from Prod)
 
-CoPilot is accessed through the Controller — no separate login required. Once logged into the Controller, click the **CoPilot** link in the top navigation bar. This opens CoPilot in a new tab with your session carried over automatically.
+| # | Flow | Protocol | Expected | DCF Policy |
+|---|------|----------|----------|------------|
+| G1 | Prod → DB | ICMP | 🟢 GREEN | `allow-prod-to-db` (priority 100) |
+| G2 | Prod → Dev | ICMP | 🔴 RED | `deny-prod-to-dev` (priority 210) |
+| G3 | Prod → Dev | TCP:22 | 🔴 RED | `default-deny-all` (priority 1000) |
 
-### Connecting to Test VMs
+### Manual — SSH Testing
 
-Use AWS EC2 Instance Connect to SSH into each VM directly from the terminal (no bastion or key file needed):
+Connect to any test VM using EC2 Instance Connect (no key file or bastion needed):
 
 ```bash
-# Get instance IDs (if you didn't save them from Step 6)
+# Get instance IDs
 terraform output test_vm_ids
 
-# SSH to any VM using EC2 Instance Connect
-aws ec2-instance-connect ssh --region us-east-1 --instance-id <instance-id>
+# SSH to any VM
+aws ec2-instance-connect ssh --instance-id <instance-id> --region us-east-1
 ```
 
-### Manual Testing
+| # | Flow | Protocol | Expected | DCF Policy |
+|---|------|----------|----------|------------|
+| M1 | Dev → DB | ICMP | ❌ BLOCKED | `deny-dev-to-db` (priority 200) |
+| M2 | Prod → DB | ICMP | ✅ ALLOWED | `allow-prod-to-db` (priority 100) |
+| M3 | Dev → Prod | ICMP | ✅ ALLOWED | `allow-dev-to-prod-read-only` (priority 110) |
+| M3 | Dev → Prod | TCP | ❌ BLOCKED | `default-deny-all` (priority 1000) |
+| M4 | Prod → Dev | ICMP | ❌ BLOCKED | `deny-prod-to-dev` (priority 210) |
 
-#### Scenario 1: Dev Attempting to Access DB (SHOULD BE BLOCKED)
+**Run a test:**
 
-This tests the most critical security control - preventing development environments from accessing production databases.
-
-**Steps:**
 ```bash
-# 1. SSH to Dev VM
-aws ec2-instance-connect ssh --region us-east-1 --instance-id <dev-instance-id>
+# ICMP test
+ping <target-private-ip>
 
-# 2. Try to ping DB VM (use IP from terraform output test_vm_private_ips)
-ping <db-vm-private-ip>
+# TCP test (wait up to 10s for timeout — timeout means DCF blocked it)
+nc -zv -w 10 <target-private-ip> 22
 ```
 
-**Expected Result:** ❌ Ping times out — **Prevent Lateral Movement - VM Tags prevents dev from accessing the production database**
+**Policy coverage matrix:**
 
-**What You'd See in CoPilot:**
-- **Navigation:** Security → Distributed Cloud Firewall → Monitor
-- **Expected Entry:** Red "DENIED" status with:
-  - Source: dev-smartgroup (10.1.0.x)
-  - Destination: db-smartgroup (10.3.0.x)
-  - Protocol: ICMP
-  - Policy: "deny-dev-to-db"
-  - Timestamp of blocked attempt
-- **Talking Point:** "This proves Prevent Lateral Movement - VM Tags is actively blocking lateral movement from dev to production data—exactly what compliance frameworks require"
+| Priority | Policy | Gatus | Manual |
+|----------|--------|-------|--------|
+| 100 | `allow-prod-to-db` | ✅ G1 | ✅ M2 |
+| 110 | `allow-dev-to-prod-read-only` | ❌ gap* | ✅ M3 |
+| 200 | `deny-dev-to-db` | ❌ gap* | ✅ M1 |
+| 210 | `deny-prod-to-dev` | ✅ G2 | ✅ M4 |
+| 1000 | `default-deny-all` | ✅ G3 | ✅ M3 |
+
+*Gatus runs in the prod spoke and cannot initiate probes from dev. Policies 110 and 200 require manual SSH testing from the dev VM.
 
 ---
 
-#### Scenario 2: Prod Accessing DB (SHOULD BE ALLOWED)
+## Demo Walkthrough
 
-This validates that legitimate production-to-database traffic is permitted.
+Use this sequence to tell the Zero Trust story on a customer call (~15 minutes):
 
-**Steps:**
+### 1. The Problem (2 min)
+> *"Traditional security groups create flat networks — once two workloads are connected, everything can talk to everything. 83% of ransomware attacks succeed through lateral movement across unsegmented networks."*
+
+**Show:** CoPilot > Topology — the hub-and-spoke architecture visually separating Dev, Prod, and DB.
+
+### 2. SmartGroups: Automated Zero Trust Boundaries (3 min)
+> *"New workloads tagged `Environment=production` instantly inherit Zero Trust policies — no manual security group updates, no tickets, no delay."*
+
+**Show:** Security > DCF > SmartGroups — click into `dev-smartgroup`, show the `Environment=development` selector.
+
+### 3. Zero Trust Policies: Default-Deny + Explicit Allow (3 min)
+**Show:** Security > DCF > Rules — walk through the policy list:
+- Priority 100 (`allow-prod-to-db`): *"Explicit allow for legitimate business need"*
+- Priority 200 (`deny-dev-to-db`): *"Zero Trust blocks dev from production data — prevents lateral movement"*
+- Priority 1000 (`default-deny-all`): *"No implicit trust — everything is blocked unless explicitly permitted"*
+
+### 4. Live Testing: Proving it Works (5 min)
+**Show the Gatus dashboard** — two red tiles proving lateral movement is blocked in real time.
+
+Then SSH from dev VM and try to ping the DB:
 ```bash
-# 1. SSH to Prod VM
-aws ec2-instance-connect ssh --region us-east-1 --instance-id <prod-instance-id>
-
-# 2. Ping DB VM
-ping <db-vm-private-ip>
+ping <db-vm-private-ip>  # Times out — DCF blocked it
 ```
 
-**Expected Result:** ✅ Ping succeeds — **Zero Trust explicit allow for legitimate business traffic**
+**Show CoPilot > DCF > Monitor** — the DENIED entry appears with source, destination, and policy name.
 
-**What You'd See in CoPilot:**
-- **Navigation:** Security → Distributed Cloud Firewall → Monitor
-- **Expected Entry:** Green "PERMITTED" status with:
-  - Source: prod-smartgroup (10.2.0.x)
-  - Destination: db-smartgroup (10.3.0.x)
-  - Protocol: ALL
-  - Policy: "allow-prod-to-db" (priority 100)
-- **Talking Point:** "Prevent Lateral Movement - VM Tags allows authorized traffic while blocking everything else—this is least-privilege access in action"
+### 5. Business Value (2 min)
+| Outcome | Traditional | Aviatrix Zero Trust |
+|---------|-------------|---------------------|
+| Deployment time | 2–4 weeks (manual SG rules) | ⚡ 15 minutes |
+| Lateral movement | ❌ Flat network | ✅ Blocked |
+| Policy management | Manual per-workload | ✅ Tag-based automation |
+| Compliance audit trail | VPC Flow Logs (delayed) | ✅ Real-time DCF Monitor |
 
 ---
-
-#### Scenario 3: Dev Accessing Prod (SHOULD BE ALLOWED - ICMP Only)
-
-This demonstrates fine-grained control - allowing diagnostics while blocking other protocols.
-
-**Steps:**
-```bash
-# 1. SSH to Dev VM
-aws ec2-instance-connect ssh --region us-east-1 --instance-id <dev-instance-id>
-
-# 2. Ping Prod VM — ICMP should succeed
-ping <prod-vm-private-ip>
-
-# 3. Try TCP connection — should fail (wait up to 10 seconds for timeout)
-nc -zv -w 5 <prod-vm-private-ip> 80
-```
-
-**Expected Result:**
-- ✅ Ping succeeds (ICMP allowed by policy)
-- ❌ TCP connection times out after ~5 seconds (only ICMP is permitted — connection refused means the port is closed, timeout means DCF blocked it)
-
----
-
-#### Scenario 4: Prod Attempting to Access Dev (SHOULD BE BLOCKED)
-
-This enforces production isolation from less secure development environments.
-
-**Steps:**
-```bash
-# 1. SSH to Prod VM
-aws ec2-instance-connect ssh --region us-east-1 --instance-id <prod-instance-id>
-
-# 2. Try to ping Dev VM
-ping <dev-vm-private-ip>
-```
-
-**Expected Result:** ❌ Ping times out — traffic blocked by DCF policy "deny-prod-to-dev"
-
----
-
-### Automated Testing
-
-Run the included test script:
-
-```bash
-# Make sure you have AWS CLI configured and jq installed
-chmod +x test-scenarios.sh
-./test-scenarios.sh
-```
-
-The script will:
-1. Retrieve all VM IPs from Terraform state
-2. Run connectivity tests using AWS Systems Manager
-3. Report PASS/FAIL for each scenario
-4. Provide CoPilot verification instructions
-
-## Demo Walkthrough: Proving Prevent Lateral Movement - VM Tags
-
-Use this sequence to demonstrate **customer outcomes** achieved through Zero Trust:
-
-### 1. The Problem: Why Prevent Lateral Movement - VM Tags (2 minutes)
-
-**Talking Points:**
-- "Traditional security groups create flat networks—once connected, everything can talk to everything"
-- "83% of ransomware attacks succeed through lateral movement across unSegmented networks"
-- "Compliance frameworks (PCI-DSS, HIPAA) require Prevent Lateral Movement - VM Tags to protect sensitive data"
-
-**Show:** CoPilot > Topology - hub-and-spoke architecture connecting dev, prod, and database VPCs
-
-### 2. SmartGroups: Automated Zero Trust Boundaries (3 minutes)
-
-**Objective:** Show how Zero Trust scales through tag-based automation
-
-**What to Show:**
-- Navigate to **Security > Distributed Cloud Firewall > SmartGroups**
-- Click into **dev-smartgroup** → show `Environment=development` selector
-- **Key message:** "New workloads tagged `Environment=production` instantly inherit Zero Trust policies—no manual security group updates"
-
-**Customer Outcome:** 90% reduction in security policy management overhead
-
-### 3. Zero Trust Policies: Default-Deny + Explicit Allow (3 minutes)
-
-**Objective:** Prove Zero Trust principle - deny by default, allow only what's needed
-
-**What to Show:**
-- Navigate to **Security > Distributed Cloud Firewall > Rules**
-- Walk through policies emphasizing **Zero Trust enforcement**:
-  - **Priority 100** (allow-prod-to-db): "Explicit allow for legitimate business need"
-  - **Priority 200** (deny-dev-to-db): "**Zero Trust blocks dev from production data**—prevents lateral movement"
-  - **Priority 1000** (default-deny-all): "Zero Trust default—no implicit trust"
-  - **Watch Mode** on deny-dev-to-db: "Test Zero Trust policies safely before enforcement"
-
-**Customer Outcome:** Breaches contained to single workload—no lateral movement
-
-### 4. Live Testing: Zero Trust Blocking Lateral Movement (5 minutes)
-
-**Objective:** Demonstrate Prevent Lateral Movement - VM Tags actively preventing attacks
-
-**Test Sequence:**
-1. **Dev → DB (BLOCKED)**: "This simulates an attacker who compromised dev trying to reach production data"
-   - Run ping test, show TIMEOUT
-   - Show **DCF Monitor** with red DENIED entry
-   - **Message:** "Prevent Lateral Movement - VM Tags stopped the lateral movement"
-
-2. **Prod → DB (ALLOWED)**: "Legitimate business traffic flows freely"
-   - Show green PERMITTED entry
-   - **Message:** "Zero Trust allows authorized access while blocking everything else"
-
-**Customer Outcome:** Zero lateral movement risk after breach
-
-### 5. The Business Value of Zero Trust (2 minutes)
-
-**Emphasize Outcomes:**
-- ✅ **Speed:** "Deployed Prevent Lateral Movement - VM Tags in 15 minutes with Terraform"
-- ✅ **Security:** "Lateral movement blocked—ransomware can't spread"
-- ✅ **Compliance:** "Complete audit trail proves microsegmentation for PCI/HIPAA/SOC 2"
-- ✅ **Operations:** "No security group sprawl—tag once, secured forever"
-- ✅ **Scale:** "Same Zero Trust policies work across AWS, Azure, GCP"
-
-**Total Demo Time:** ~15 minutes
-
-**Closing:** "This is Prevent Lateral Movement - VM Tags at scale—faster, more secure, and with less overhead than native cloud security groups."
 
 ## Cleanup
 
-### Standard Destroy
+### ⚠️ Important: DCF Prerequisite for Destroy
+
+`terraform destroy` will attempt to disable DCF on your Controller. If your Controller has **other active DCF policies outside this blueprint**, the Controller will reject the request and destroy will fail.
+
+**Before running `terraform destroy`:**
+- If DCF is only used by this blueprint: proceed normally
+- If DCF is shared with other policies: manually remove or disable those policies first, then destroy
+
+### Destroy
 
 ```bash
 terraform destroy
 ```
 
-Type `yes` when prompted to confirm.
-
-**Destroy takes approximately 8-10 minutes.**
-
-> **⚠️ If you already have DCF enabled on your Controller with policies outside this blueprint**, use `destroy.sh` instead:
-> ```bash
-> chmod +x destroy.sh
-> ./destroy.sh
-> ```
-> `terraform destroy` will attempt to disable DCF on the Controller. If other active DCF policies exist, the Controller will reject the request and destroy will fail. `destroy.sh` removes `aviatrix_distributed_firewalling_config` from Terraform state first, so only this blueprint's resources are torn down — your existing DCF configuration is left untouched.
+Type `yes` when prompted. **Destroy takes approximately 8–10 minutes.**
 
 ### Manual Cleanup (if destroy fails)
 
-If Terraform destroy fails, manually delete resources in this order:
+Delete resources in this order:
 
-1. **DCF Policies** - In CoPilot: Security > DCF > Rules > Delete all policies
-2. **SmartGroups** - In CoPilot: Security > DCF > SmartGroups > Delete all groups
-3. **Spoke Gateways** - In CoPilot: Cloud Fabric > Gateways > Delete each spoke
-4. **Transit Gateway** - In CoPilot: Cloud Fabric > Gateways > Delete transit
-5. **EC2 Instances** - In AWS Console: EC2 > Instances > Terminate all test VMs
-6. **VPCs** - In AWS Console: VPC > Your VPCs > Delete all VPCs (this also deletes subnets, route tables, IGWs)
+1. **DCF Policies** — CoPilot: Security > DCF > Rules > delete all policies
+2. **SmartGroups** — CoPilot: Security > DCF > SmartGroups > delete all groups
+3. **Spoke Gateways** — CoPilot: Cloud Fabric > Gateways > delete each spoke
+4. **Transit Gateway** — CoPilot: Cloud Fabric > Gateways > delete transit
+5. **EC2 Instances** — AWS Console: EC2 > Instances > terminate all VMs
+6. **VPCs** — AWS Console: VPC > Your VPCs > delete all VPCs
 
 ### Verify Cleanup
-
-Confirm no resources remain:
 
 ```bash
 # Check for remaining VPCs
@@ -518,78 +353,39 @@ aws ec2 describe-instances \
   --query 'Reservations[].Instances[].InstanceId'
 ```
 
-Both commands should return empty arrays `[]`.
+Both commands should return `[]`.
+
+---
 
 ## Troubleshooting
 
-### Issue: Gateway creation times out
+**Gateway creation times out**
+- Verify AWS account is onboarded in the Controller under **Accounts > Access Accounts**
+- Confirm `aviatrix-role-app` and `aviatrix-role-ec2` IAM roles exist in your AWS account
+- Check sufficient EIP quota (need 4 free EIPs): `aws ec2 describe-addresses --query 'Addresses | length(@)'`
 
-**Symptom:** Aviatrix gateway creation fails with timeout error
+**DCF policies not enforcing**
+- Verify DCF is enabled: Controller > Security > DCF > Configuration
+- Check SmartGroup membership: Security > DCF > SmartGroups > click group > confirm VMs are listed
+- Ensure test VMs have the correct `Environment` tag (verify in EC2 console)
+- Wait 1–2 minutes for policy changes to propagate
 
-**Solution:**
-1. Verify AWS account is onboarded in the Aviatrix Control Plane
-2. Check that the Controller can reach AWS API endpoints
-3. Verify sufficient EIP quota in the target region (need 4 EIPs)
-4. Check IAM permissions for the Aviatrix IAM roles
+**Gatus dashboard shows 503**
+- ALB health check hasn't passed yet — wait 60 seconds and refresh
+- The Gatus EC2 instance needs ~3–5 minutes to boot, pull Docker image, and start the container
 
-### Issue: DCF policies not working
+**`terraform destroy` fails with DCF error**
+- Your Controller has active DCF policies outside this blueprint
+- Disable or remove those policies in CoPilot before retrying destroy
 
-**Symptom:** Traffic is allowed when it should be blocked (or vice versa)
+**Can't SSH to test VMs**
+- Use EC2 Instance Connect: `aws ec2-instance-connect ssh --instance-id <id> --region us-east-1`
+- Confirm the EICE endpoint is deployed (it is by default for dev and prod VMs)
+- DB VM has no EICE — use SSM instead: `aws ssm start-session --target <instance-id>`
 
-**Solution:**
-1. Verify DCF is enabled: **Security > DCF > Configuration** should show "Enabled"
-2. Check SmartGroup membership: **Security > DCF > SmartGroups** > click group > verify instances are listed
-3. Verify policy priority order - lower numbers are evaluated first
-4. Check that test VM instances have correct Environment tags
-5. Wait 1-2 minutes for policy changes to propagate
-
-### Issue: Can't SSH to test VMs
-
-**Symptom:** Unable to connect to test VMs for testing
-
-**Solution:**
-1. Verify security group allows SSH (port 22) - it should by default
-2. Use AWS Systems Manager Session Manager instead of SSH:
-   ```bash
-   aws ssm start-session --target <instance-id>
-   ```
-3. Verify the EC2 key pair exists in your AWS account
-4. Check that test VMs have private IPs in the correct subnets
-
-### Issue: Test script fails
-
-**Symptom:** `./test-scenarios.sh` returns errors
-
-**Solution:**
-1. Install required tools:
-   ```bash
-   # macOS
-   brew install jq awscli
-
-   # Linux
-   sudo apt-get install jq awscli  # Debian/Ubuntu
-   sudo yum install jq awscli      # RHEL/CentOS
-   ```
-2. Configure AWS CLI:
-   ```bash
-   aws configure
-   ```
-3. Verify SSM agent is running on test VMs (it's installed by default on Amazon Linux 2)
-4. Check IAM permissions for SSM:SendCommand
-
-### Issue: High costs
-
-**Symptom:** AWS bill higher than expected
-
-**Solution:**
-1. This blueprint costs ~$6/day when running - destroy after testing
-2. Check for orphaned Elastic IPs (charged when not attached)
-3. Verify NAT Gateways weren't created (they're expensive)
-4. Use t3.micro instead of larger instance types
+---
 
 ## Tested With
-
-This blueprint is currently tested with:
 
 | Component | Version |
 |-----------|---------|
@@ -598,101 +394,14 @@ This blueprint is currently tested with:
 | Terraform | 1.9.x |
 | AWS Provider | 6.32.x |
 
-> **Note**: The blueprint may work with other versions, but these are the versions used for validation.
-
-## Customer Use Cases: Prevent Lateral Movement - VM Tags Outcomes
-
-### 1. PCI-DSS Compliance: Cardholder Data Environment Segmentation
-
-**Requirement:** PCI-DSS 1.2.1 mandates network segmentation between CDE and non-CDE systems
-
-**Zero Trust Solution:**
-- SmartGroups: `Compliance=PCI-CDE` for cardholder data workloads
-- DCF Policy: **DENY** all non-CDE → CDE traffic (blocks lateral movement)
-- Audit trail via DCF Monitor proves segmentation for compliance assessors
-
-**Customer Outcome:** Pass PCI audit with documented Prevent Lateral Movement - VM Tags
+> Provider version must match your Controller version. See the [full compatibility matrix](https://registry.terraform.io/providers/AviatrixSystems/aviatrix/latest/docs/guides/release-compatibility).
 
 ---
-
-### 2. Ransomware Defense: Stop Lateral Movement After Breach
-
-**Scenario:** Attacker compromises a development workload via phishing
-
-**Zero Trust Solution:**
-- SmartGroups segment by `Environment=dev/prod/database`
-- DCF Policy: **DENY dev → prod/database** (breach contained)
-- Default-deny prevents lateral movement to high-value targets
-
-**Customer Outcome:** Ransomware contained to single dev workload—production and databases unaffected
-
----
-
-### 3. HIPAA Compliance: PHI Data Segmentation
-
-**Requirement:** HIPAA §164.312 requires access controls for electronic protected health information
-
-**Zero Trust Solution:**
-- SmartGroups: `DataClassification=PHI` for healthcare systems
-- DCF Policy: Explicit allow **ONLY** for authorized medical applications
-- Default-deny blocks all unauthorized PHI access
-
-**Customer Outcome:** Meet HIPAA audit requirements with Prevent Lateral Movement - VM Tags audit trail
-
----
-
-### 4. DevSecOps Velocity: Deploy Secure Workloads in Minutes
-
-**Challenge:** Security teams bottleneck deployments with manual security group approvals
-
-**Zero Trust Solution:**
-- Developers tag workloads: `Environment=production`, `Application=web-api`
-- SmartGroups auto-apply Zero Trust policies based on tags
-- No security team approval needed—policies enforce automatically
-
-**Customer Outcome:** 80% faster secure deployment with Zero Trust automation
 
 ## Contributing
 
-See the [Contributing Guide](../../CONTRIBUTING.md) for information on how to contribute to this blueprint.
+See the [Contributing Guide](../../CONTRIBUTING.md).
 
 ## License
 
-Apache 2.0 - See [LICENSE](../../LICENSE)
-
----
-
-## Ready to Deploy Prevent Lateral Movement - VM Tags?
-
-### Quick Start
-
-```bash
-git clone https://github.com/AviatrixSystems/aviatrix-blueprints.git
-cd aviatrix-blueprints/blueprints/prevent-lateral-movement-vm-tags
-terraform apply
-```
-
-**In 15 minutes, you'll have:**
-- ✅ Prevent Lateral Movement - VM Tags across 3 VPCs
-- ✅ Lateral movement protection (dev → database blocked)
-- ✅ Compliance audit trail (every denied connection logged)
-- ✅ Tag-based automation (zero security group sprawl)
-
-### What You'll Achieve
-
-| Outcome | Traditional Security Groups | Aviatrix Zero Trust |
-|---------|----------------------------|---------------------|
-| **Deployment Time** | 2-4 weeks (manual SG rules) | ⚡ **15 minutes (Terraform)** |
-| **Lateral Movement Prevention** | ❌ Flat network after connection | ✅ **Zero lateral movement** |
-| **Policy Management** | Manual per-workload rules | ✅ **Tag-based automation** |
-| **Compliance Audit Trail** | ⚠️ VPC Flow Logs (delayed) | ✅ **Real-time DCF Monitor** |
-| **Multi-Cloud Consistency** | ❌ Per-cloud silos | ✅ **Unified Zero Trust** |
-
----
-
-**Questions?** Open an [issue](https://github.com/AviatrixSystems/aviatrix-blueprints/issues) or visit [Aviatrix Community](https://community.aviatrix.com)
-
-**Author:** @tatiLogg
-**Status:** ✅ Community Tier - Tested and validated
-**Last Updated:** March 2026
-**Blueprint Tier:** Community (targeting Verified Q2 2026)
+Apache 2.0 — see [LICENSE](../../LICENSE).
