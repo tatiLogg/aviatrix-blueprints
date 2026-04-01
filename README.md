@@ -20,14 +20,14 @@ Production-ready Terraform lab environments for learning, demonstrating, and tes
 
 ```bash
 # Clone and open with Claude Code
-git clone https://github.com/aviatrix/aviatrix-blueprints.git
+git clone https://github.com/AviatrixSystems/aviatrix-blueprints.git
 cd aviatrix-blueprints
 claude
 ```
 
 Inside Claude Code:
-- `/deploy-blueprint dcf-eks` — Deploy with guided assistance
-- `/analyze-blueprint dcf-eks` — Preview resources and costs before deploying
+- `/deploy-blueprint prevent-lateral-movement-vm-tags` — Deploy with guided assistance
+- `/analyze-blueprint prevent-lateral-movement-vm-tags` — Preview resources and costs before deploying
 
 ## What are Blueprints?
 
@@ -49,6 +49,7 @@ Blueprints are **complete, deployable lab environments** that demonstrate Aviatr
 
 | Blueprint | Description | Cloud(s) | Tier | Status |
 |-----------|-------------|----------|------|--------|
+| [prevent-lateral-movement-vm-tags](blueprints/prevent-lateral-movement-vm-tags/) | Zero Trust microsegmentation using DCF SmartGroups and VM tags to prevent lateral movement | AWS | Community | 🔄 In Review |
 | [dcf-eks](blueprints/dcf-eks/) | Distributed Cloud Firewall with EKS | AWS | Community | 🚧 In Progress |
 
 ## Manual Deployment
@@ -71,11 +72,11 @@ See the [Prerequisites Overview](docs/prerequisites/README.md) for detailed setu
 
 ```bash
 # Clone the repository
-git clone https://github.com/aviatrix/aviatrix-blueprints.git
+git clone https://github.com/AviatrixSystems/aviatrix-blueprints.git
 cd aviatrix-blueprints
 
 # Navigate to your chosen blueprint
-cd blueprints/dcf-eks
+cd blueprints/prevent-lateral-movement-vm-tags
 
 # Review the README for specific requirements
 cat README.md
@@ -116,7 +117,8 @@ aviatrix-blueprints/
 ├── modules/                 # Shared Terraform modules (future)
 ├── blueprints/              # Deployable lab environments
 │   ├── _template/           # Template for new blueprints
-│   └── dcf-eks/             # Individual blueprints...
+│   ├── prevent-lateral-movement-vm-tags/  # Zero Trust microsegmentation
+│   └── dcf-eks/             # DCF with EKS
 └── .github/                 # CI/CD and templates
 ```
 
