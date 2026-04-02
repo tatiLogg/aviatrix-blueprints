@@ -183,7 +183,7 @@ export AVIATRIX_PASSWORD="<your-password>"
 export AWS_PROFILE="<your-profile>"        # Option A: named profile
 # export AWS_ACCESS_KEY_ID="..."           # Option B: access keys
 # export AWS_SECRET_ACCESS_KEY="..."
-# export AWS_DEFAULT_REGION="us-east-1"
+export AWS_DEFAULT_REGION="us-east-1"     # Required if not set in your AWS CLI config
 ```
 
 ```bash
@@ -198,6 +198,8 @@ aws_region            = "us-east-1"
 name_prefix           = "plm"
 test_vm_instance_type = "t3.micro"
 ```
+
+> **Advanced options:** The `terraform.tfvars.example` file contains commented-out blocks for overriding the transit gateway CIDR/ASN/HA setting and spoke VPC CIDRs. The defaults work for most demos — only uncomment if you need to change CIDRs or enable transit HA.
 
 ### Step 3: Deploy
 
