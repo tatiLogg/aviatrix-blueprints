@@ -336,19 +336,21 @@ resource "aws_instance" "test_vms" {
   user_data = <<-SCRIPT
     #!/bin/bash
     yum update -y
-    yum install -y tcpdump netcat nmap
+    yum install -y tcpdump nmap
     hostnamectl set-hostname ${each.key}-test-vm
     echo "Welcome to ${each.key} test VM" > /etc/motd
     %{ if each.key == "db" }
     # Persistent TCP listener on port 5432 — lets Gatus verify DCF permits
-    # Prod -> DB TCP traffic end-to-end. Uses systemd for reliable startup.
+    # Prod -> DB TCP traffic end-to-end. Uses Python3 (pre-installed on AL2)
+    # instead of nc/netcat which is not available in Amazon Linux 2 repos.
     cat > /etc/systemd/system/demo-db-listener.service <<EOF
 [Unit]
 Description=Demo DB port 5432 listener
 After=network.target
 [Service]
-ExecStart=/usr/bin/nc -lk 5432
+ExecStart=/usr/bin/python3 -c "import socket; s=socket.socket(); s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1); s.bind(('0.0.0.0',5432)); s.listen(10); [s.accept()[0].close() for _ in iter(int,1)]"
 Restart=always
+RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
