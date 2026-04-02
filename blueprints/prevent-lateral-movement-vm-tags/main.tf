@@ -347,7 +347,7 @@ resource "aws_instance" "test_vms" {
 Description=Demo DB port 5432 listener
 After=network.target
 [Service]
-ExecStart=/usr/bin/ncat -lk 5432
+ExecStart=/usr/bin/nc -lk 5432
 Restart=always
 [Install]
 WantedBy=multi-user.target
