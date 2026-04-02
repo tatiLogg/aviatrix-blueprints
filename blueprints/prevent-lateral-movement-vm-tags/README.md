@@ -231,10 +231,10 @@ Dashboard probes update every 10 seconds. Leave it open during the demo — the 
 
 ### Step 5: Verify in CoPilot
 
-1. Log into your Controller and click **CoPilot** in the top navigation
+1. Log into your CoPilot
 2. **Cloud Fabric > Topology** — verify Transit + 3 Spoke gateways are visible and connected
-3. **Security > Distributed Cloud Firewall > SmartGroups** — verify 3 SmartGroups exist with correct VM membership
-4. **Security > Distributed Cloud Firewall > Rules** — verify all 5 policies are configured
+3. **Groups > SmartGroups** — verify 3 SmartGroups exist with correct VM membership
+4. **Security > Distributed Cloud Firewall > Policies** — verify all 5 policies are configured
 5. **Security > Distributed Cloud Firewall > Monitor** — use this during test scenarios to see live PERMITTED/DENIED entries
 
 ---
