@@ -346,6 +346,8 @@ resource "aws_instance" "test_vms" {
     %{ endif }
     SCRIPT
 
+  user_data_replace_on_change = true
+
   tags = merge(local.common_tags, {
     Name        = "${var.name_prefix}-${each.key}-test-vm"
     Environment = each.value.environment
