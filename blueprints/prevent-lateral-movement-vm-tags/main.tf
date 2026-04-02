@@ -339,6 +339,11 @@ resource "aws_instance" "test_vms" {
     yum install -y tcpdump netcat nmap
     hostnamectl set-hostname ${each.key}-test-vm
     echo "Welcome to ${each.key} test VM" > /etc/motd
+    %{ if each.key == "db" }
+    # Start a persistent TCP listener on port 5432 so the Gatus dashboard
+    # can verify that DCF permits Prod -> DB TCP traffic end-to-end.
+    while true; do nc -l 5432; done &
+    %{ endif }
     SCRIPT
 
   tags = merge(local.common_tags, {
