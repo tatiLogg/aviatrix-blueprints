@@ -48,6 +48,19 @@ resource "aws_subnet" "transit_public" {
   })
 }
 
+resource "aws_subnet" "transit_ha" {
+  count = var.transit_gateway.ha_enabled ? 1 : 0
+
+  vpc_id                  = aws_vpc.transit.id
+  cidr_block              = cidrsubnet(var.transit_gateway.cidr, 2, 1)
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = true
+
+  tags = merge(local.common_tags, {
+    Name = "${var.name_prefix}-transit-ha-subnet"
+  })
+}
+
 resource "aws_internet_gateway" "transit" {
   vpc_id = aws_vpc.transit.id
 
@@ -83,7 +96,7 @@ resource "aviatrix_transit_gateway" "main" {
   vpc_reg      = var.aws_region
   gw_size      = "t3.small"
   subnet       = aws_subnet.transit_public.cidr_block
-  ha_subnet    = var.transit_gateway.ha_enabled ? cidrsubnet(var.transit_gateway.cidr, 2, 1) : null
+  ha_subnet    = var.transit_gateway.ha_enabled ? aws_subnet.transit_ha[0].cidr_block : null
   ha_gw_size   = var.transit_gateway.ha_enabled ? "t3.small" : null
 
   local_as_number               = var.transit_gateway.asn
@@ -211,12 +224,12 @@ resource "aviatrix_spoke_gateway" "spokes" {
 # no IP whitelisting required. The `aws ec2-instance-connect ssh` command in
 # the gatus_dashboards output auto-discovers these endpoints.
 #
-# Only dev and prod need endpoints (Gatus runs there). DB is a target-only VM.
+# One endpoint per spoke VPC — dev, prod, and db all get EICE so SEs can SSH in to test DCF policy enforcement from any VM.
 
 # Security group for EC2 Instance Connect Endpoints.
 # Allows outbound SSH (port 22) to the spoke VPC CIDR only.
 resource "aws_security_group" "eice" {
-  for_each = { for k, v in var.spokes : k => v if k != "db" }
+  for_each = { for k, v in var.spokes : k => v }
 
   name_prefix = "${var.name_prefix}-${each.key}-eice-sg"
   description = "Security group for EC2 Instance Connect Endpoint in ${each.key} spoke"
@@ -241,7 +254,7 @@ resource "aws_security_group" "eice" {
 }
 
 resource "aws_ec2_instance_connect_endpoint" "spokes" {
-  for_each = { for k, v in var.spokes : k => v if k != "db" }
+  for_each = { for k, v in var.spokes : k => v }
 
   subnet_id          = aws_subnet.spokes_public[each.key].id
   security_group_ids = [aws_security_group.eice[each.key].id]
@@ -264,18 +277,7 @@ resource "aws_security_group" "test_vms" {
   description = "Security group for ${each.key} test VM"
   vpc_id      = aws_vpc.spokes[each.key].id
 
-  # DB has no EICE (target-only VM) — SSH allowed within VPC CIDR only.
-  # Dev/prod SSH is added via aws_security_group_rule below (requires source SG reference).
-  dynamic "ingress" {
-    for_each = each.key == "db" ? [1] : []
-    content {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      cidr_blocks = [var.spokes[each.key].cidr]
-      description = "SSH within VPC CIDR only"
-    }
-  }
+  # DB SSH ingress from EICE security group is added via aws_security_group_rule below (same as dev/prod).
 
   # Allow ICMP (ping) from within the RFC1918 range for DCF policy testing
   ingress {
@@ -284,6 +286,19 @@ resource "aws_security_group" "test_vms" {
     protocol    = "icmp"
     cidr_blocks = ["10.0.0.0/8"]
     description = "ICMP ping from private address space"
+  }
+
+  # Allow TCP 5432 (PostgreSQL) from private space — used for Gatus TCP probe demo
+  # DCF enforces whether this traffic actually reaches the DB, regardless of SG allowance.
+  dynamic "ingress" {
+    for_each = each.key == "db" ? [1] : []
+    content {
+      from_port   = 5432
+      to_port     = 5432
+      protocol    = "tcp"
+      cidr_blocks = ["10.0.0.0/8"]
+      description = "PostgreSQL from private address space (DCF enforces policy)"
+    }
   }
 
   # Allow all outbound
@@ -337,7 +352,7 @@ resource "aws_instance" "test_vms" {
 # Uses aws_security_group_rule (not inline ingress) because source_security_group_id
 # is not supported in inline ingress blocks.
 resource "aws_security_group_rule" "test_vm_ssh_from_eice" {
-  for_each = { for k, v in var.spokes : k => v if k != "db" }
+  for_each = { for k, v in var.spokes : k => v }
 
   type                     = "ingress"
   from_port                = 22

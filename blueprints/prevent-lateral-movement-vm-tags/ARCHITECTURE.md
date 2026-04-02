@@ -33,7 +33,7 @@ It does this using **Aviatrix Distributed Cloud Firewall (DCF)** with **SmartGro
 │  │            Transit VPC (10.0.0.0/23)         │    │
 │  │     ┌────────────────────────────────┐       │    │
 │  │     │  Aviatrix Transit Gateway      │       │    │
-│  │     │  (zt-seg-transit-gw, t3.small) │       │    │
+│  │     │  (plm-transit-gw, t3.small)    │       │    │
 │  │     └───┬─────────────┬─────────┬───┘       │    │
 │  └─────────┼─────────────┼─────────┼───────────┘    │
 │            │             │         │                  │

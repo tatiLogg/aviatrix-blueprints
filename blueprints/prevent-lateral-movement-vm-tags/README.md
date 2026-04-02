@@ -66,13 +66,22 @@ export AWS_PROFILE="<your-profile-name>"
 # Confirm AWS credentials are active
 aws sts get-caller-identity
 
-# Confirm EC2 key pair exists in the target region
-aws ec2 describe-key-pairs --region us-east-1 --query 'KeyPairs[].KeyName'
+# EC2 key pair (optional — EC2 Instance Connect does not require a key pair)
+# Only needed if you set test_vm_key_name in terraform.tfvars
+# aws ec2 describe-key-pairs --region us-east-1 --query 'KeyPairs[].KeyName'
 
 # Confirm sufficient Elastic IP quota (need 4 free EIPs)
 aws ec2 describe-account-attributes --attribute-names max-elastic-ips --query 'AccountAttributes[0].AttributeValues[0].AttributeValue'
 aws ec2 describe-addresses --query 'Addresses | length(@)'
 # Available EIPs = quota - current count. Must be >= 4.
+
+# Confirm sufficient VPC quota (need 4 free VPCs — default limit is 5/region)
+aws ec2 describe-account-attributes --attribute-names max-instances --region us-east-1
+aws ec2 describe-vpcs --query 'Vpcs | length(@)'
+# Available VPCs = quota - current count. Must be >= 4.
+
+# Confirm sufficient IGW quota (need 4 — default limit is 5/region, same as VPC)
+aws ec2 describe-internet-gateways --query 'InternetGateways | length(@)'
 ```
 
 Also confirm in the Aviatrix Controller that your AWS account is onboarded under **Accounts > Access Accounts** before proceeding. Gateway creation will time out if the account is not onboarded.
@@ -93,7 +102,7 @@ This blueprint deploys the following into a single AWS region:
 | Aviatrix Spoke Gateways | 3 | One each for Dev, Prod, and DB VPCs |
 | AWS VPCs | 4 | Transit + Dev + Prod + DB |
 | EC2 Test VMs | 3 | One per spoke VPC for connectivity testing |
-| EC2 Instance Connect Endpoints | 2 | Secure, keyless SSH tunnel to Dev and Prod VMs — no bastion, no public IP needed |
+| EC2 Instance Connect Endpoints | 3 | Secure, keyless SSH tunnel to all VMs (Dev, Prod, DB) — no bastion, no public IP needed |
 | DCF SmartGroups | 3 | Tag-based groups: dev, prod, db |
 | DCF Policies | 5 | Zero Trust rules — see table below |
 | Gatus Dashboard | 1 | Live connectivity dashboard (ALB-exposed, browser accessible) |
@@ -120,7 +129,7 @@ This blueprint deploys the following into a single AWS region:
 | EC2 Gatus Instance (t3.micro) | 1 | $0.01 |
 | Application Load Balancer | 1 | $0.02 |
 | Elastic IPs | 4 | $0.02 |
-| EC2 Instance Connect Endpoints | 2 | Free |
+| EC2 Instance Connect Endpoints | 3 | Free |
 | VPCs, Subnets, Route Tables, IGWs | Multiple | Free |
 | DCF SmartGroups + Policies | 3 + 5 | Free |
 
@@ -165,6 +174,19 @@ cd aviatrix-blueprints/blueprints/prevent-lateral-movement-vm-tags
 ### Step 2: Configure Variables
 
 ```bash
+# Step 2a: Set credentials as environment variables
+export AVIATRIX_CONTROLLER_IP="<your-controller-ip>"
+export AVIATRIX_USERNAME="admin"
+export AVIATRIX_PASSWORD="<your-password>"
+
+# AWS credentials (choose one)
+export AWS_PROFILE="<your-profile>"        # Option A: named profile
+# export AWS_ACCESS_KEY_ID="..."           # Option B: access keys
+# export AWS_SECRET_ACCESS_KEY="..."
+# export AWS_DEFAULT_REGION="us-east-1"
+```
+
+```bash
 cp terraform.tfvars.example terraform.tfvars
 ```
 
@@ -173,8 +195,7 @@ Edit `terraform.tfvars` with your values:
 ```hcl
 aws_account_name      = "my-aws-account"  # Must match account name in Controller > Accounts
 aws_region            = "us-east-1"
-name_prefix           = "zt-seg"
-test_vm_key_name      = "my-keypair"      # Must exist in the target region
+name_prefix           = "plm"
 test_vm_instance_type = "t3.micro"
 ```
 
@@ -195,6 +216,8 @@ terraform output gatus_dashboard_url
 ```
 
 Open the URL in a browser. Wait 3–5 minutes after apply for the Gatus instance to boot and pass ALB health checks. If you see **503**, wait 60 seconds and refresh.
+
+> **Note:** The Gatus "Prod → DB" tile may stay RED for the first 3–5 minutes after deployment. This is normal — the Aviatrix Controller takes a few minutes to index new EC2 instances into SmartGroups. Once the `plm-prod-smartgroup` includes the Gatus instance, the PERMIT rule kicks in and the tile turns GREEN. Check SmartGroup membership in CoPilot > Security > DCF > SmartGroups.
 
 **What you'll see:**
 
@@ -225,17 +248,20 @@ Dashboard probes update every 10 seconds. Leave it open during the demo — the 
 | G1 | Prod → DB | ICMP | 🟢 GREEN | `allow-prod-to-db` (priority 100) |
 | G2 | Prod → Dev | ICMP | 🔴 RED | `deny-prod-to-dev` (priority 210) |
 | G3 | Prod → Dev | TCP:22 | 🔴 RED | `default-deny-all` (priority 1000) |
+| G4 | Prod → DB | TCP:5432 | 🟢 GREEN | `allow-prod-to-db` (priority 100) |
 
 ### Manual — SSH Testing
 
 Connect to any test VM using EC2 Instance Connect (no key file or bastion needed):
 
 ```bash
-# Get instance IDs
-terraform output test_vm_ids
+# Get ready-to-run SSH commands for all VMs
+terraform output ssh_commands
 
-# SSH to any VM
-aws ec2-instance-connect ssh --instance-id <instance-id> --region us-east-1
+# Example output:
+# dev  = "aws ec2-instance-connect ssh --instance-id i-0abc123 --region us-east-1"
+# prod = "aws ec2-instance-connect ssh --instance-id i-0def456 --region us-east-1"
+# db   = "aws ec2-instance-connect ssh --instance-id i-0ghi789 --region us-east-1"
 ```
 
 | # | Flow | Protocol | Expected | DCF Policy |
@@ -377,7 +403,7 @@ Both commands should return `[]`.
 **Can't SSH to test VMs**
 - Use EC2 Instance Connect: `aws ec2-instance-connect ssh --instance-id <id> --region us-east-1`
 - Confirm the EICE endpoint is deployed (it is by default for dev and prod VMs)
-- DB VM has no EICE — use SSM instead: `aws ssm start-session --target <instance-id>`
+- DB VM now has EICE — use: `terraform output ssh_commands` to get the exact command
 
 ---
 
