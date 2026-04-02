@@ -235,7 +235,8 @@ Dashboard probes update every 10 seconds. Leave it open during the demo — the 
 2. **Cloud Fabric > Topology** — verify Transit + 3 Spoke gateways are visible and connected
 3. **Groups > SmartGroups** — verify 3 SmartGroups exist with correct VM membership
 4. **Security > Distributed Cloud Firewall > Policies** — verify all 5 policies are configured
-5. **Security > Distributed Cloud Firewall > Monitor** — use this during test scenarios to see live PERMITTED/DENIED entries
+5. **Security > Distributed Cloud Firewall > Monitor** — use this during test scenarios (Step 7) to see live PERMITTED/DENIED entries. The log will be empty until traffic flows through the gateways.
+6. **Monitor > FlowIQ** — shows general NetFlow data across all gateways; useful for traffic visibility beyond DCF policy logs
 
 ---
 
