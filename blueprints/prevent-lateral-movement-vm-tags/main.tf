@@ -340,9 +340,21 @@ resource "aws_instance" "test_vms" {
     hostnamectl set-hostname ${each.key}-test-vm
     echo "Welcome to ${each.key} test VM" > /etc/motd
     %{ if each.key == "db" }
-    # Start a persistent TCP listener on port 5432 so the Gatus dashboard
-    # can verify that DCF permits Prod -> DB TCP traffic end-to-end.
-    while true; do nc -l 5432; done &
+    # Persistent TCP listener on port 5432 — lets Gatus verify DCF permits
+    # Prod -> DB TCP traffic end-to-end. Uses systemd for reliable startup.
+    cat > /etc/systemd/system/demo-db-listener.service <<EOF
+[Unit]
+Description=Demo DB port 5432 listener
+After=network.target
+[Service]
+ExecStart=/usr/bin/ncat -lk 5432
+Restart=always
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable demo-db-listener
+    systemctl start demo-db-listener
     %{ endif }
     SCRIPT
 
