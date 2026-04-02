@@ -15,7 +15,7 @@ Deploy **Zero Trust microsegmentation** in 15 minutes using Aviatrix Distributed
 |-----------|-------------|-------|
 | **Aviatrix Controller** | v7.1+ | Must be deployed, accessible, and have your AWS account onboarded under **Accounts > Access Accounts** |
 | **Aviatrix CoPilot** | Required | Used for topology visualization, DCF Monitor, and SmartGroup verification during the demo |
-| **DCF** | Must be **enabled** | Enable DCF before deploying: Controller > Security > Distributed Cloud Firewall > Configuration > Enable. This blueprint manages SmartGroups and policies only — it does not enable/disable DCF, so `terraform destroy` will never conflict with other active policies. |
+| **DCF** | Managed by this blueprint | This blueprint enables DCF on `terraform apply` and disables it on `terraform destroy`. If your Controller has other DCF policies you want to preserve, remove the `aviatrix_distributed_firewalling_config` resource from `dcf.tf` before running `terraform destroy`. |
 
 ### Local Tools
 
@@ -223,9 +223,10 @@ Open the URL in a browser. Wait 3–5 minutes after apply for the Gatus instance
 
 | Tile | Status | What it proves |
 |------|--------|----------------|
-| Prod → DB (ALLOWED) | 🟢 Healthy | `allow-prod-to-db` policy permitting legitimate traffic |
+| Prod → DB ICMP (ALLOWED) | 🟢 Healthy | `allow-prod-to-db` policy permitting legitimate traffic |
+| Prod → DB TCP:5432 (ALLOWED) | 🟢 Healthy | `allow-prod-to-db` permitting database port traffic end-to-end |
 | Prod → Dev ICMP (BLOCKED) | 🔴 Unhealthy | `deny-prod-to-dev` blocking lateral movement |
-| Prod → Dev TCP (BLOCKED) | 🔴 Unhealthy | `default-deny-all` catching everything else |
+| Prod → Dev TCP:22 (BLOCKED) | 🔴 Unhealthy | `default-deny-all` catching everything else |
 
 Dashboard probes update every 10 seconds. Leave it open during the demo — the audience sees live DCF enforcement without any commands.
 
@@ -403,8 +404,8 @@ Both commands should return `[]`.
 
 **Can't SSH to test VMs**
 - Use EC2 Instance Connect: `aws ec2-instance-connect ssh --instance-id <id> --region us-east-1`
-- Confirm the EICE endpoint is deployed (it is by default for dev and prod VMs)
-- DB VM now has EICE — use: `terraform output ssh_commands` to get the exact command
+- All three VMs (dev, prod, db) have EC2 Instance Connect Endpoints — no key pair or bastion needed
+- Run `terraform output ssh_commands` to get the exact ready-to-run command for each VM
 
 ---
 
@@ -412,7 +413,7 @@ Both commands should return `[]`.
 
 | Component | Version |
 |-----------|---------|
-| Aviatrix Controller | 7.2.x |
+| Aviatrix Controller | 8.2.x |
 | Aviatrix Terraform Provider | 8.2.x |
 | Terraform | 1.9.x |
 | AWS Provider | 6.32.x |
