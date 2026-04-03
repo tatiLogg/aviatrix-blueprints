@@ -109,13 +109,13 @@ This blueprint deploys the following into a single AWS region:
 
 **DCF Policies configured:**
 
-| Priority | Policy | Action | What it proves |
-|----------|--------|--------|----------------|
-| 100 | `allow-prod-to-db` | PERMIT | Legitimate business traffic flows |
-| 110 | `allow-dev-to-prod-read-only` | PERMIT (ICMP only) | Protocol-level granularity |
-| 200 | `deny-dev-to-db` | DENY | Lateral movement from dev to production data blocked |
-| 210 | `deny-prod-to-dev` | DENY | Compromised prod cannot reach dev |
-| 1000 | `default-deny-all` | DENY | Zero Trust default — no implicit trust |
+| Priority | Policy | Action | Watch | What it proves |
+|----------|--------|--------|-------|----------------|
+| 100 | `allow-prod-to-db` | PERMIT | | Legitimate business traffic flows |
+| 110 | `allow-dev-to-prod-read-only` | PERMIT (ICMP only) | | Protocol-level granularity |
+| 200 | `deny-dev-to-db` | DENY | ✓ | Lateral movement from dev to production data blocked — highlighted in CoPilot DCF Monitor when it fires |
+| 210 | `deny-prod-to-dev` | DENY | | Compromised prod cannot reach dev |
+| 1000 | `default-deny-all` | DENY | | Zero Trust default — no implicit trust |
 
 ---
 

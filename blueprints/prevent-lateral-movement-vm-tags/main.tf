@@ -87,6 +87,13 @@ resource "aws_route_table_association" "transit_public" {
   route_table_id = aws_route_table.transit_public.id
 }
 
+resource "aws_route_table_association" "transit_ha" {
+  count = var.transit_gateway.ha_enabled ? 1 : 0
+
+  subnet_id      = aws_subnet.transit_ha[0].id
+  route_table_id = aws_route_table.transit_public.id
+}
+
 # Aviatrix Transit Gateway
 resource "aviatrix_transit_gateway" "main" {
   cloud_type   = 1 # AWS
