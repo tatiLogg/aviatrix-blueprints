@@ -1,6 +1,6 @@
 # Prevent Lateral Movement - VM Tags
 
-Deploy **Zero Trust microsegmentation** in 15 minutes using Aviatrix Distributed Cloud Firewall (DCF) and SmartGroups. This blueprint enforces tag-based network segmentation across AWS VPCs — preventing lateral movement, accelerating compliance, and eliminating security group sprawl.
+Deploy **tag-based lateral movement prevention** in 15 minutes using Aviatrix Distributed Cloud Firewall (DCF) and SmartGroups. This blueprint enforces tag-based network segmentation across AWS VPCs — preventing lateral movement, accelerating compliance, and eliminating security group sprawl.
 
 > [!TIP]
 > **🤖 Optimized for Claude Code** — Run `/deploy-blueprint prevent-lateral-movement-vm-tags` for AI-guided deployment with prerequisite checks, or `/analyze-blueprint prevent-lateral-movement-vm-tags` for resource and cost details. [Get Claude Code](https://claude.ai/code)
@@ -104,7 +104,7 @@ This blueprint deploys the following into a single AWS region:
 | EC2 Test VMs | 3 | One per spoke VPC for connectivity testing |
 | EC2 Instance Connect Endpoints | 3 | Secure, keyless SSH tunnel to all VMs (Dev, Prod, DB) — no bastion, no public IP needed |
 | DCF SmartGroups | 3 | Tag-based groups: dev, prod, db |
-| DCF Policies | 5 | Zero Trust rules — see table below |
+| DCF Policies | 5 | Default-deny rules — see table below |
 | Gatus Dashboard | 1 | Live connectivity dashboard (ALB-exposed, browser accessible) |
 
 **DCF Policies configured:**
@@ -115,7 +115,7 @@ This blueprint deploys the following into a single AWS region:
 | 110 | `allow-dev-to-prod-read-only` | PERMIT (ICMP only) | | Protocol-level granularity |
 | 200 | `deny-dev-to-db` | DENY | ✓ | Lateral movement from dev to production data blocked — highlighted in CoPilot DCF Monitor when it fires |
 | 210 | `deny-prod-to-dev` | DENY | | Compromised prod cannot reach dev |
-| 1000 | `default-deny-all` | DENY | | Zero Trust default — no implicit trust |
+| 1000 | `default-deny-all` | DENY | | Default-deny — no implicit trust |
 
 ---
 
@@ -309,15 +309,15 @@ Use this sequence to walk through how the blueprint prevents lateral movement (~
 
 **Show:** CoPilot > Topology — the hub-and-spoke architecture visually separating Dev, Prod, and DB.
 
-### 2. SmartGroups: Automated Zero Trust Boundaries (3 min)
-> *"New workloads tagged `Environment=production` instantly inherit Zero Trust policies — no manual security group updates, no tickets, no delay."*
+### 2. SmartGroups: Automated Segmentation Boundaries (3 min)
+> *"New workloads tagged `Environment=production` instantly inherit segmentation policies — no manual security group updates, no tickets, no delay."*
 
 **Show:** Security > DCF > SmartGroups — click into `dev-smartgroup`, show the `Environment=development` selector.
 
-### 3. Zero Trust Policies: Default-Deny + Explicit Allow (3 min)
+### 3. Policies: Default-Deny + Explicit Allow (3 min)
 **Show:** Security > DCF > Rules — walk through the policy list:
 - Priority 100 (`allow-prod-to-db`): *"Explicit allow for legitimate business need"*
-- Priority 200 (`deny-dev-to-db`): *"Zero Trust blocks dev from production data — prevents lateral movement"*
+- Priority 200 (`deny-dev-to-db`): *"DCF blocks dev from production data — prevents lateral movement"*
 - Priority 1000 (`default-deny-all`): *"No implicit trust — everything is blocked unless explicitly permitted"*
 
 ### 4. Live Testing: Proving it Works (5 min)
@@ -331,7 +331,7 @@ ping <db-vm-private-ip>  # Times out — DCF blocked it
 **Show CoPilot > DCF > Monitor** — the DENIED entry appears with source, destination, and policy name.
 
 ### 5. Business Value (2 min)
-| Outcome | Traditional | Aviatrix Zero Trust |
+| Outcome | Traditional | Aviatrix DCF |
 |---------|-------------|---------------------|
 | Deployment time | 2–4 weeks (manual SG rules) | ⚡ 15 minutes |
 | Lateral movement | ❌ Flat network | ✅ Blocked |
