@@ -14,7 +14,7 @@ Deploy **Zero Trust microsegmentation** in 15 minutes using Aviatrix Distributed
 | Component | Requirement | Notes |
 |-----------|-------------|-------|
 | **Aviatrix Controller** | v7.1+ | Must be deployed, accessible, and have your AWS account onboarded under **Accounts > Access Accounts** |
-| **Aviatrix CoPilot** | Required | Used for topology visualization, DCF Monitor, and SmartGroup verification during the demo |
+| **Aviatrix CoPilot** | Required | Used for topology visualization, DCF Monitor, and SmartGroup verification |
 | **DCF** | Must be pre-enabled | Enable DCF on your Controller before applying: **Controller > Security > Distributed Cloud Firewall > Configuration > Enable**. This blueprint manages only SmartGroups and policies — it will NOT disable DCF on destroy. |
 
 ### Local Tools
@@ -92,7 +92,7 @@ Also confirm in the Aviatrix Controller that your AWS account is onboarded under
 
 ![Architecture Diagram](architecture.svg)
 
-> **For a detailed breakdown of every component, how they connect, and what to explain during a customer demo, see [ARCHITECTURE.md](ARCHITECTURE.md).**
+> **For a detailed breakdown of every component and how they connect, see [ARCHITECTURE.md](ARCHITECTURE.md).**
 
 This blueprint deploys the following into a single AWS region:
 
@@ -199,7 +199,7 @@ name_prefix           = "plm"
 test_vm_instance_type = "t3.micro"
 ```
 
-> **Advanced options:** The `terraform.tfvars.example` file contains commented-out blocks for overriding the transit gateway CIDR/ASN/HA setting and spoke VPC CIDRs. The defaults work for most demos — only uncomment if you need to change CIDRs or enable transit HA.
+> **Advanced options:** The `terraform.tfvars.example` file contains commented-out blocks for overriding the transit gateway CIDR/ASN/HA setting and spoke VPC CIDRs. The defaults work for most deployments — only uncomment if you need to change CIDRs or enable transit HA.
 
 ### Step 3: Deploy
 
@@ -230,7 +230,7 @@ Open the URL in a browser. Wait 3–5 minutes after apply for the Gatus instance
 | Prod → Dev ICMP (BLOCKED) | 🔴 Unhealthy | `deny-prod-to-dev` blocking lateral movement |
 | Prod → Dev TCP:22 (BLOCKED) | 🔴 Unhealthy | `default-deny-all` catching everything else |
 
-Dashboard probes update every 10 seconds. Leave it open during the demo — the audience sees live DCF enforcement without any commands.
+Dashboard probes update every 10 seconds. Leave it open during testing — live DCF enforcement is visible without any commands.
 
 ### Step 5: Verify in CoPilot
 
@@ -300,9 +300,9 @@ nc -zv -w 10 <target-private-ip> 22
 
 ---
 
-## Demo Walkthrough
+## Walkthrough
 
-Use this sequence to tell the Zero Trust story on a customer call (~15 minutes):
+Use this sequence to walk through how the blueprint prevents lateral movement (~15 minutes):
 
 ### 1. The Problem (2 min)
 > *"Traditional security groups create flat networks — once two workloads are connected, everything can talk to everything. 83% of ransomware attacks succeed through lateral movement across unsegmented networks."*
