@@ -15,7 +15,7 @@ Deploy **Zero Trust microsegmentation** in 15 minutes using Aviatrix Distributed
 |-----------|-------------|-------|
 | **Aviatrix Controller** | v7.1+ | Must be deployed, accessible, and have your AWS account onboarded under **Accounts > Access Accounts** |
 | **Aviatrix CoPilot** | Required | Used for topology visualization, DCF Monitor, and SmartGroup verification during the demo |
-| **DCF** | Managed by this blueprint | This blueprint enables DCF on `terraform apply` and disables it on `terraform destroy`. If your Controller has other DCF policies you want to preserve, remove the `aviatrix_distributed_firewalling_config` resource from `dcf.tf` before running `terraform destroy`. |
+| **DCF** | Must be pre-enabled | Enable DCF on your Controller before applying: **Controller > Security > Distributed Cloud Firewall > Configuration > Enable**. This blueprint manages only SmartGroups and policies — it will NOT disable DCF on destroy. |
 
 ### Local Tools
 
