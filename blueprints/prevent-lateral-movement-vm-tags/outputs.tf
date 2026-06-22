@@ -82,7 +82,7 @@ output "test_scenarios" {
 output "ssh_commands" {
   description = "Ready-to-run commands to SSH into each test VM via EC2 Instance Connect (no key pair required)"
   value = {
-    for k, v in aws_instance.test_vms : k => "aws ec2-instance-connect ssh --instance-id ${v.id} --region ${var.aws_region}"
+    for k, v in aws_instance.test_vms : k => "aws ec2-instance-connect ssh --instance-id ${v.id} --region ${var.aws_region} --connection-type eice --eice-options endpointId=${aws_ec2_instance_connect_endpoint.spokes[k].id} --ssh-flag \"-o StrictHostKeyChecking=no\" --ssh-flag \"-o UserKnownHostsFile=/dev/null\""
   }
 }
 
